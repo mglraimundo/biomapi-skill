@@ -1,0 +1,16 @@
+{
+  "name": "biomapi-plugins",
+  "owner": {
+    "name": "mglraimundo"
+  },
+  "plugins": [
+    {
+      "name": "biomapi-skill",
+      "source": {
+        "source": "github",
+        "repo": "mglraimundo/biomapi-skill"
+      },
+      "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images) via biomapi.com"
+    }
+  ]
+}
