@@ -13,6 +13,7 @@ Extract structured biometry data from optical biometry device reports (PDF/image
 - User uploads or references a PDF/image that is an optical biometry report (from devices like IOLMaster, Lenstar, Anterion, Pentacam, etc.)
 - User mentions a BiomPIN code (format: `word-word-123456`) to retrieve shared results
 - User asks to check BiomAPI status
+- User asks for an ESCRS IOL calculation given a biometry PDF/image (see **ESCRS IOL Calculation Shortcut** below)
 
 ## Data Reference
 
@@ -151,8 +152,9 @@ Rules:
 1. **BiomPIN block** — the PIN, expiration, and a clickable URL:
 
 ```
-BiomPIN: word-word-123456 (expires: 2025-01-18T10:30:00Z)
+BiomPIN: word-word-123456
 URL: https://biomapi.com/pin/word-word-123456
+ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
 ```
 
 2. **Raw JSON** — the full API response in a fenced code block for easy copy-paste:
@@ -166,6 +168,19 @@ URL: https://biomapi.com/pin/word-word-123456
 If the user opted out of BiomPIN, skip the BiomPIN block and URL — just show the table and raw JSON.
 
 **That's it.** No metadata footer, no commentary. Just the table, BiomPIN, and raw JSON.
+
+## ESCRS IOL Calculation Shortcut
+
+When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "calculate the IOL", "run this through ESCRS", etc.) given a biometry PDF or image:
+
+1. Process the file normally with `--pin` (the BiomPIN is required for the ESCRS link)
+2. Present **only** the preformed ESCRS IOL Calculator link — no table, no BiomPIN block, no raw JSON:
+
+```
+ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
+```
+
+That's the entire output. The user wants to go straight to the calculator.
 
 ## Saving Results
 
