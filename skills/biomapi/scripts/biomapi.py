@@ -126,7 +126,7 @@ def cmd_process(file_path: str, generate_pin: bool = False) -> None:
 
     body, content_type = _build_multipart(file_path, generate_pin)
     result = _request("POST", f"{BASE_URL}/api/v1/biom/process", body=body, content_type=content_type)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result))
 
 
 def cmd_retrieve(biompin_code: str) -> None:
@@ -135,13 +135,13 @@ def cmd_retrieve(biompin_code: str) -> None:
 
     url = f"{BASE_URL}/api/v1/biom/retrieve?biom_pin={quote(biompin_code)}"
     result = _request("GET", url)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result))
 
 
 def cmd_status() -> None:
     """Check API health status."""
     result = _request("GET", f"{BASE_URL}/api/v1/status")
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result))
 
 
 def main() -> None:

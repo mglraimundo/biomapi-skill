@@ -95,50 +95,71 @@ python3 scripts/biomapi.py status
 }
 ```
 
+## Output Behavior
+
+**Be concise.** The user is a clinical expert. After extraction, present ONLY the data table below. Do NOT:
+- Comment on, interpret, or analyze the biometric values
+- Provide clinical opinions or surgical recommendations
+- Explain what the measurements mean
+- Flag values as unusual or noteworthy
+- Add any commentary beyond the table itself
+
+The only exception: if a value falls **outside the validation ranges** defined in [reference.md](reference.md) (e.g., AL outside 14–40mm, K outside 20–99D), append a brief warning below the table. Otherwise, stay silent — the user knows how to interpret the data.
+
+Provide commentary, interpretation, or recommendations only if the user **explicitly asks**.
+
 ## Presenting Results
 
-After a successful extraction, present results as a clinical biometry summary.
+Present results as a compact table matching the BiomAPI website format.
 
-**Header**: Device name, manufacturer, patient info (name acronym, ID, DOB, gender).
+**Patient info** (one line): `NAME (ID) • DOB • Gender`
 
-**Biometry table** — both eyes side by side:
+**Biometry table** — device name as header, both eyes side by side, measurements in this exact order:
 
-| Measurement | Right Eye (OD) | Left Eye (OS) |
-|-------------|----------------|---------------|
+| {Device Name} | Right (OD) | Left (OS) |
+|---|---|---|
+| Lens Status | Phakic | Phakic |
+| Post Refractive | None | None |
 | AL (mm) | 23.45 | 23.52 |
 | ACD (mm) | 3.12 | 3.08 |
-| K1 (D) @ axis | 43.25 @ 5° | 43.00 @ 175° |
-| K2 (D) @ axis | 44.50 @ 95° | 44.25 @ 85° |
-| WTW (mm) | 11.8 | 11.9 |
 | LT (mm) | 4.52 | 4.48 |
-| CCT (um) | 545 | 542 |
-| Lens Status | Phakic | Phakic |
+| WTW (mm) | 11.80 | 11.90 |
+| CCT (μm) | 545 | 542 |
+| n | 1.3375 | 1.3375 |
+| K1 (D) | 43.25 | 43.00 |
+| K1 Axis (°) | 5 | 175 |
+| K2 (D) | 44.50 | 44.25 |
+| K2 Axis (°) | 95 | 85 |
+
+If `extra_data.posterior_keratometry` exists, add a **Posterior Keratometry** table:
+
+| {PK Device Name} | Right (OD) | Left (OS) |
+|---|---|---|
+| PK1 (D) | 6.12 | 6.08 |
+| PK1 Axis (°) | 8 | 172 |
+| PK2 (D) | 6.45 | 6.38 |
+| PK2 Axis (°) | 98 | 82 |
 
 Rules:
 - Show `null` values as `—`
-- Combine K magnitude and axis: `43.25 @ 5°`
-- If `extra_data.posterior_keratometry` exists, add a separate **Posterior Keratometry** table with PK1/PK2 values
-- If a BiomPIN was generated, display it prominently with its expiry time
+- K1/K2 magnitude and axis are always separate rows (not combined)
+- AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
+- If a BiomPIN was generated, show it after the table: `BiomPIN: word-word-123456 (expires: ...)`
 
-**Metadata footer**: Briefly note extraction method, model, and processing time.
+**That's it.** No metadata footer, no commentary. Just the table.
 
 ## Saving Results
 
-If the user asks to save or download the results:
-- Save the full JSON response to a file (e.g., `patient_biometry.json`)
-- For CSV export, create a row per eye with all measurements as columns
-
-The JSON output can be re-uploaded to BiomAPI later for validation via the BiomJSON engine.
+Only offer to save if the user asks. Default format is the full JSON response saved to a file (e.g., `patient_biometry.json`). The JSON can be re-uploaded to BiomAPI for validation via the BiomJSON engine. For CSV, create a row per eye with all measurements as columns — but only if requested.
 
 ## Error Handling
 
-The script outputs JSON with `"error": true` on failure:
-
-- **Rate limit exceeded (429)**: Inform user of the 30/day public limit. Mention they can use an API key for higher limits by setting the `BIOMAPI_KEY` environment variable.
-- **Connection failed**: The BiomAPI service may be temporarily unavailable. Suggest trying again shortly.
-- **Unsupported file type**: Only PDF and images (.pdf, .png, .jpg, .jpeg) are supported.
-- **File too large**: Maximum file size is 20MB.
+The script outputs JSON with `"error": true` on failure. Keep error messages brief:
+- **429**: Rate limited (30/day public). Suggest setting `BIOMAPI_KEY` for higher limits.
+- **Connection failed**: Service may be temporarily unavailable.
+- **Unsupported file type**: Only `.pdf`, `.png`, `.jpg`, `.jpeg` supported.
+- **File too large**: Max 20MB.
 
 ## Multiple Files
 
-If the user has multiple biometry reports, process each file sequentially and present a summary comparison table at the end showing key measurements (AL, K1, K2) for all patients/files.
+Process sequentially. Present each result as its own table. Only add a comparison summary if the user asks for one.
