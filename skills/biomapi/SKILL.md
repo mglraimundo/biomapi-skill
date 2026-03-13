@@ -44,11 +44,11 @@ Public access (no key) is rate-limited to 30 extractions/day per IP.
 ### Process a biometry file
 
 ```bash
-python3 scripts/biomapi.py process /path/to/report.pdf [--pin]
+python3 scripts/biomapi.py process /path/to/report.pdf --pin
 ```
 
 - Accepts: `.pdf`, `.png`, `.jpg`, `.jpeg` (max 20MB)
-- `--pin`: Generate a BiomPIN for secure sharing
+- `--pin`: Generate a BiomPIN for secure sharing (**use by default**; omit only if user explicitly asks not to)
 
 ### Retrieve via BiomPIN
 
@@ -144,9 +144,28 @@ Rules:
 - Show `null` values as `—`
 - K1/K2 magnitude and axis are always separate rows (not combined)
 - AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
-- If a BiomPIN was generated, show it after the table: `BiomPIN: word-word-123456 (expires: ...)`
+- **Process with `--pin` by default**; omit only if the user explicitly requests no BiomPIN
 
-**That's it.** No metadata footer, no commentary. Just the table.
+**After the table(s)**, always include:
+
+1. **BiomPIN block** — the PIN, expiration, and a clickable URL:
+
+```
+BiomPIN: word-word-123456 (expires: 2025-01-18T10:30:00Z)
+URL: https://biomapi.com/pin/word-word-123456
+```
+
+2. **Raw JSON** — the full API response in a fenced code block for easy copy-paste:
+
+~~~
+```json
+{ full JSON response here }
+```
+~~~
+
+If the user opted out of BiomPIN, skip the BiomPIN block and URL — just show the table and raw JSON.
+
+**That's it.** No metadata footer, no commentary. Just the table, BiomPIN, and raw JSON.
 
 ## Saving Results
 
