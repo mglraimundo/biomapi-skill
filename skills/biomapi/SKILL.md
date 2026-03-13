@@ -88,7 +88,7 @@ python3 scripts/biomapi.py status
     }
   },
   "metadata": {
-    "api_version": "0.9.6",
+    "api_version": "0.9.7",
     "extraction_info": { "extraction_method": "BiomAI", "...": "..." },
     "biompin": { "pin": "lunar-rocket-731904", "expires_at_timestamp": "2025-01-18T10:30:00Z" }
   }
