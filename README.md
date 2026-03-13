@@ -68,13 +68,29 @@ Just upload a biometry PDF or image to the conversation. The skill activates aut
 
 ### BiomPIN sharing
 
-Ask for a BiomPIN when processing to get a temporary sharing code:
+A BiomPIN is generated **by default** with every extraction — no need to ask for it. The output includes:
 
-> "Process this biometry report and generate a sharing PIN"
+- **BiomPIN code** for sharing (e.g., `lunar-rocket-731904`)
+- **Direct URL** to view results: `https://biomapi.com/pin/lunar-rocket-731904`
+- **ESCRS IOL Calculator link** pre-loaded with the biometry data
+
+To skip BiomPIN generation, explicitly ask:
+
+> "Process this biometry report without a PIN"
 
 Retrieve shared data later:
 
 > "Retrieve biometry data for lunar-rocket-731904"
+
+### ESCRS IOL Calculator
+
+Ask for an IOL calculation and the skill extracts the biometry and returns a direct link to the ESCRS IOL Calculator pre-loaded with the data:
+
+> "Calculate the IOL for this biometry"
+
+> "Run this through the ESCRS calculator"
+
+Only the calculator link is returned — no table or raw JSON — so you can go straight to the formulas.
 
 ### Save results
 
