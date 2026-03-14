@@ -1,6 +1,6 @@
 ---
 name: biomapi
-description: Process optical biometry reports (PDF/images) using BiomAPI AI extraction at biomapi.com. Use when the user uploads or references a biometry PDF or image and wants structured biometry data extracted, or when they mention a BiomPIN code (word-word-123456) to retrieve shared results. Returns measurements like axial length, keratometry, ACD, and more — formatted as a clinical biometry table.
+description: Process optical biometry reports (PDF/images) using BiomAPI AI extraction at biomapi.com. Use when the user uploads or references a biometry PDF or image and wants structured biometry data extracted, or when they mention a BiomPIN code (word-word-123456) to retrieve shared results. Returns patient info, a BiomPIN sharing link, and a preformed ESCRS IOL Calculator URL.
 allowed-tools: Bash, Read, Glob
 ---
 
@@ -17,7 +17,7 @@ Extract structured biometry data from optical biometry device reports (PDF/image
 
 ## Data Reference
 
-See [reference.md](reference.md) for the complete schema: all biometry fields with units and validation ranges, supported devices, enum values, posterior keratometry, and typical clinical ranges. Consult it to interpret results and answer clinical questions about the data.
+See [reference.md](reference.md) for the complete schema: all biometry fields with units and validation ranges, supported devices, enum values, posterior keratometry, and typical clinical ranges. Only load it when rendering a biometry table, checking validation ranges, or answering a clinical question — not on standard extractions.
 
 ## Client Script
 
@@ -46,6 +46,12 @@ Public access (no key) is rate-limited to 30 extractions/day per IP.
 
 ```bash
 python3 scripts/biomapi.py process /path/to/report.pdf --pin
+```
+
+Multiple files in one call (processed concurrently inside the script):
+
+```bash
+python3 scripts/biomapi.py process file1.pdf file2.pdf file3.pdf --pin
 ```
 
 - Accepts: `.pdf`, `.png`, `.jpg`, `.jpeg` (max 20MB)
@@ -147,4 +153,10 @@ When the user explicitly provides files as biometry printouts for processing, pa
 
 ## Multiple Files
 
-When multiple files are provided, launch **all** `biomapi.py process` calls simultaneously as parallel bash commands — do not wait for one to finish before starting the next. Present each result as its own compact block in the order they complete. Only add a comparison summary if the user asks for one.
+When multiple files are provided, pass all paths in a **single** `biomapi.py process` call — the script handles concurrency internally:
+
+```bash
+python3 scripts/biomapi.py process file1.pdf file2.pdf file3.pdf --pin
+```
+
+The script outputs one JSON object per line, in input order. Present each as its own compact block. Only add a comparison summary if the user asks for one.

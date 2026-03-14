@@ -6,7 +6,7 @@ Processes biometry PDFs/images through the BiomAPI service and retrieves
 results via BiomPIN secure sharing codes.
 
 Usage:
-    biomapi.py process <file_path> [--pin]
+    biomapi.py process <file_path> [<file_path2> ...] [--pin]
     biomapi.py retrieve <biompin_code>
     biomapi.py status
 
@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -77,7 +78,7 @@ def _build_multipart(file_path: str, generate_pin: bool) -> tuple[bytes, str]:
 
 
 def _request(method: str, url: str, body: bytes | None = None, content_type: str | None = None) -> dict:
-    """Make an HTTP request and return parsed JSON."""
+    """Make an HTTP request and return parsed JSON. Returns error dict on failure."""
     headers = {}
     if API_KEY:
         headers["Authorization"] = f"Bearer {API_KEY}"
@@ -96,37 +97,54 @@ def _request(method: str, url: str, body: bytes | None = None, content_type: str
             detail = error_json.get("detail", error_body)
         except json.JSONDecodeError:
             detail = error_body
-        print(json.dumps({"error": True, "status": e.code, "detail": detail}))
-        sys.exit(1)
+        return {"error": True, "status": e.code, "detail": detail}
     except URLError as e:
-        print(json.dumps({"error": True, "detail": f"Connection failed: {e.reason}"}))
-        sys.exit(1)
+        return {"error": True, "detail": f"Connection failed: {e.reason}"}
 
 
-def cmd_process(file_path: str, generate_pin: bool = False) -> None:
-    """Upload a biometry file for AI extraction."""
+def _process_one(file_path: str, generate_pin: bool) -> dict:
+    """Validate and upload a single biometry file. Returns result dict."""
     file_path = os.path.abspath(file_path)
 
     if not os.path.isfile(file_path):
-        print(json.dumps({"error": True, "detail": f"File not found: {file_path}"}))
-        sys.exit(1)
+        return {"error": True, "file": file_path, "detail": f"File not found: {file_path}"}
 
     ext = os.path.splitext(file_path)[1].lower()
     if ext not in SUPPORTED_EXTENSIONS:
-        print(json.dumps({
+        return {
             "error": True,
+            "file": file_path,
             "detail": f"Unsupported file type '{ext}'. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
-        }))
-        sys.exit(1)
+        }
 
     file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
     if file_size_mb > 20:
-        print(json.dumps({"error": True, "detail": f"File too large ({file_size_mb:.1f}MB). Maximum: 20MB"}))
-        sys.exit(1)
+        return {"error": True, "file": file_path, "detail": f"File too large ({file_size_mb:.1f}MB). Maximum: 20MB"}
 
     body, content_type = _build_multipart(file_path, generate_pin)
-    result = _request("POST", f"{BASE_URL}/api/v1/biom/process", body=body, content_type=content_type)
-    print(json.dumps(result))
+    return _request("POST", f"{BASE_URL}/api/v1/biom/process", body=body, content_type=content_type)
+
+
+def cmd_process(file_paths: list[str], generate_pin: bool = False) -> None:
+    """Upload one or more biometry files for AI extraction, concurrently."""
+    if len(file_paths) == 1:
+        result = _process_one(file_paths[0], generate_pin)
+        print(json.dumps(result))
+        if result.get("error"):
+            sys.exit(1)
+        return
+
+    results = [None] * len(file_paths)
+    with ThreadPoolExecutor(max_workers=len(file_paths)) as executor:
+        futures = {executor.submit(_process_one, fp, generate_pin): i for i, fp in enumerate(file_paths)}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    for result in results:
+        print(json.dumps(result))
+
+    if any(r.get("error") for r in results if r):
+        sys.exit(1)
 
 
 def cmd_retrieve(biompin_code: str) -> None:
@@ -136,12 +154,16 @@ def cmd_retrieve(biompin_code: str) -> None:
     url = f"{BASE_URL}/api/v1/biom/retrieve?biom_pin={quote(biompin_code)}"
     result = _request("GET", url)
     print(json.dumps(result))
+    if result.get("error"):
+        sys.exit(1)
 
 
 def cmd_status() -> None:
     """Check API health status."""
     result = _request("GET", f"{BASE_URL}/api/v1/status")
     print(json.dumps(result))
+    if result.get("error"):
+        sys.exit(1)
 
 
 def main() -> None:
@@ -153,11 +175,12 @@ def main() -> None:
 
     if command == "process":
         if len(sys.argv) < 3:
-            print("Usage: biomapi.py process <file_path> [--pin]", file=sys.stderr)
+            print("Usage: biomapi.py process <file_path> [<file_path2> ...] [--pin]", file=sys.stderr)
             sys.exit(1)
-        file_path = sys.argv[2]
-        generate_pin = "--pin" in sys.argv[3:]
-        cmd_process(file_path, generate_pin)
+        args = sys.argv[2:]
+        generate_pin = "--pin" in args
+        file_paths = [a for a in args if a != "--pin"]
+        cmd_process(file_paths, generate_pin)
 
     elif command == "retrieve":
         if len(sys.argv) < 3:
