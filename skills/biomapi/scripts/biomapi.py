@@ -8,6 +8,7 @@ results via BiomPIN secure sharing codes.
 Usage:
     biomapi.py process <file_path> [<file_path2> ...] [--pin]
     biomapi.py retrieve <biompin_code>
+    biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
     biomapi.py status
 
 Stdout (process/retrieve):
@@ -16,11 +17,15 @@ Stdout (process/retrieve):
     The full raw API response is always saved to disk at saved_json.
     On error: {"error": true, "detail": "...", ...}
 
+Stdout (csv):
+    {"byeye": "/abs/path/biomapi_byeye.csv"}
+
 Environment:
     BIOMAPI_URL  - API base URL (default: https://biomapi.com)
     BIOMAPI_KEY  - Optional API key for higher rate limits
 """
 
+import csv as csv_mod
 import json
 import os
 import re
@@ -238,6 +243,79 @@ def cmd_retrieve(biompin_code: str) -> None:
     }))
 
 
+_EYE_FIELDS = [
+    "AL", "ACD", "K1_magnitude", "K1_axis", "K2_magnitude", "K2_axis",
+    "WTW", "LT", "CCT", "lens_status", "post_refractive", "keratometric_index",
+]
+
+_BYEYE_COLS = (
+    ["filename", "right_eye", "biometer_device_name", "biometer_manufacturer",
+     "patient_name", "patient_patient_id", "patient_date_of_birth", "patient_gender"]
+    + _EYE_FIELDS
+)
+
+
+def _parse_report_json(json_data: dict, filename: str) -> dict:
+    """Flatten a StandardAPIResponse JSON into row data for CSV export."""
+    data = json_data.get("data") or {}
+    biometer = data.get("biometer") or {}
+    patient = data.get("patient") or {}
+    return {
+        "filename": filename,
+        "biometer_device_name": biometer.get("device_name") or "",
+        "biometer_manufacturer": biometer.get("manufacturer") or "",
+        "patient_name": patient.get("name") or "",
+        "patient_patient_id": patient.get("patient_id") or "",
+        "patient_date_of_birth": patient.get("date_of_birth") or "",
+        "patient_gender": patient.get("gender") or "",
+        "right_eye": data.get("right_eye") or {},
+        "left_eye": data.get("left_eye") or {},
+    }
+
+
+def _v(val) -> str:
+    return "" if val is None else str(val)
+
+
+def cmd_csv(json_paths: list[str], output_dir: str) -> None:
+    """Generate a byeye CSV from one or more BiomAPI result JSON files."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    rows = []
+    for path in json_paths:
+        path = os.path.abspath(path)
+        filename = os.path.basename(path)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                json_data = json.load(f)
+            rows.append(_parse_report_json(json_data, filename))
+        except Exception as e:
+            print(json.dumps({"warning": f"Could not parse {filename}: {e}"}), file=sys.stderr)
+            rows.append({
+                "filename": filename,
+                "biometer_device_name": "", "biometer_manufacturer": "",
+                "patient_name": "", "patient_patient_id": "",
+                "patient_date_of_birth": "", "patient_gender": "",
+                "right_eye": {}, "left_eye": {},
+            })
+
+    out_path = os.path.join(output_dir, "biomapi_byeye.csv")
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv_mod.DictWriter(f, fieldnames=_BYEYE_COLS)
+        writer.writeheader()
+        for row in rows:
+            shared = {k: row[k] for k in _BYEYE_COLS[2:8]}  # device + patient fields
+            shared["filename"] = row["filename"]
+            for eye_key, right_val in [("right_eye", "1"), ("left_eye", "0")]:
+                eye_row = shared.copy()
+                eye_row["right_eye"] = right_val
+                for field in _EYE_FIELDS:
+                    eye_row[field] = _v(row[eye_key].get(field))
+                writer.writerow(eye_row)
+
+    print(json.dumps({"byeye": os.path.abspath(out_path)}))
+
+
 def cmd_status() -> None:
     """Check API health status."""
     result = _request("GET", f"{BASE_URL}/api/v1/status")
@@ -268,12 +346,31 @@ def main() -> None:
             sys.exit(1)
         cmd_retrieve(sys.argv[2])
 
+    elif command == "csv":
+        if len(sys.argv) < 3:
+            print("Usage: biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]", file=sys.stderr)
+            sys.exit(1)
+        args = sys.argv[2:]
+        output_dir = os.getcwd()
+        if "--output" in args:
+            idx = args.index("--output")
+            if idx + 1 >= len(args):
+                print("Error: --output requires a directory argument", file=sys.stderr)
+                sys.exit(1)
+            output_dir = args[idx + 1]
+            args = args[:idx] + args[idx + 2:]
+        json_paths = [a for a in args if not a.startswith("--")]
+        if not json_paths:
+            print("Error: no JSON files specified", file=sys.stderr)
+            sys.exit(1)
+        cmd_csv(json_paths, output_dir)
+
     elif command == "status":
         cmd_status()
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print("Commands: process, retrieve, status", file=sys.stderr)
+        print("Commands: process, retrieve, csv, status", file=sys.stderr)
         sys.exit(1)
 
 

@@ -63,6 +63,18 @@ python3 scripts/biomapi.py process file1.pdf file2.pdf file3.pdf --pin
 python3 scripts/biomapi.py retrieve word-word-123456
 ```
 
+### Generate CSV export
+
+```bash
+python3 scripts/biomapi.py csv file1.json [file2.json ...] [--output /path/to/dir]
+```
+
+- Input: one or more `saved_json` paths (from `process` or `retrieve` output)
+- `--output`: directory for the CSV file (default: current working directory)
+- Output: `{"byeye": "/abs/path/biomapi_byeye.csv"}`
+
+One row per eye (`right_eye` column: `1`=right, `0`=left). Columns: `filename`, `right_eye`, `biometer_device_name`, `biometer_manufacturer`, `patient_name`, `patient_patient_id`, `patient_date_of_birth`, `patient_gender`, `AL`, `ACD`, `K1_magnitude`, `K1_axis`, `K2_magnitude`, `K2_axis`, `WTW`, `LT`, `CCT`, `lens_status`, `post_refractive`, `keratometric_index`.
+
 ### Check API status
 
 ```bash
@@ -72,7 +84,7 @@ python3 scripts/biomapi.py status
 
 ## Output Behavior
 
-**Be concise.** The user is a clinical expert. Do NOT comment on, interpret, or analyze biometric values — the compact output contains only patient info and links, not measurements. Provide commentary or recommendations only if the user **explicitly asks**.
+**Be concise.** The user is a clinical expert. Do NOT comment on, interpret, or analyze biometric values. Provide commentary or recommendations only if the user **explicitly asks**.
 
 ## Script Output Format
 
@@ -81,32 +93,40 @@ The script always outputs a **compact summary** JSON (not the full API response)
 ```json
 {
   "patient_id": "12345",
-  "patient_name": "John Doe",
+  "patient_name": "J. DOE",
   "device": "IOLMaster 700",
   "biompin": "lunar-rocket-731904",
   "saved_json": "/abs/path/to/biomapi-12345-iolmaster700.json"
 }
 ```
 
-The **full raw API response** (including all metadata, LLM metrics, timings) is always saved to disk at `saved_json` automatically — no user action required.
+The **full raw API response** (including all metadata, LLM metrics, timings) is always saved to disk at `saved_json` automatically.
+
+**Patient name**: always use `patient_name` exactly as returned in the compact summary — it comes directly from the API's `data.patient.patient_name` field, which may be abbreviated or anonymized. Never expand, reconstruct, or infer the name from the filename, PDF context, or any other source.
 
 ## Presenting Results
 
-**Default output** — one compact block per file:
+**Default output** — for each file:
+
+1. Show the compact info block
+2. Read `saved_json` with the `Read` tool and present the full JSON in a code block
 
 ```
-Patient: NAME (ID: 12345)
-BiomPIN: word-word-123456
-BiomAPI: https://biomapi.com/pin/word-word-123456
-ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
-JSON: /abs/path/to/biomapi-12345-iolmaster700.json
+Patient: J. DOE (ID: 12345)
+BiomPIN: lunar-rocket-731904
+BiomAPI: https://biomapi.com/pin/lunar-rocket-731904
+ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=lunar-rocket-731904
+```
+
+```json
+{ ...full contents of saved_json... }
 ```
 
 - **Process with `--pin` by default**; omit only if the user explicitly requests no BiomPIN
-- If no BiomPIN: show patient and JSON lines only, no URLs
-- No table, no raw JSON content unless the user explicitly asks
+- If no BiomPIN: show patient line only (no URLs), then the JSON block
+- No biometry table unless the user explicitly asks
 
-**If the user asks for the biometry table**, use the `Read` tool to read `saved_json` first, then render the table from the file — never reconstruct from context. Present as a compact table with device name as header, both eyes side by side, measurements in this exact order:
+**If the user asks for the biometry table**, use the `Read` tool on `saved_json` and render a compact table with device name as header, both eyes side by side, measurements in this exact order:
 
 | {Device Name} | Right (OD) | Left (OS) |
 |---|---|---|
@@ -137,15 +157,11 @@ Table formatting rules:
 - K1/K2 magnitude and axis are always separate rows (not combined)
 - AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
 
-**If the user asks for the JSON or to save it**: the file is already on disk at `saved_json`. Tell the user the path. Never reconstruct the JSON from context — doing so silently drops the `metadata` section (LLM metrics, timings, etc.).
 
 ## ESCRS IOL Calculation Shortcut
 
 When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "calculate the IOL", "run this through ESCRS", etc.) given a biometry PDF or image, the default output already includes the ESCRS link — no special handling needed. Just process normally with `--pin`.
 
-## Saving Results
-
-The full JSON is always saved automatically to disk alongside the source file (filename: `biomapi-{patient_id}-{device}.json`, same convention as the web interface download). No extra action needed for JSON. For CSV, create a row per eye with all measurements as columns — but only if requested.
 
 ## Error Handling
 
@@ -157,7 +173,9 @@ The script outputs JSON with `"error": true` on failure. Keep error messages bri
 
 ## File Handling
 
-When the user explicitly provides files as biometry printouts for processing, pass the file path directly to `biomapi.py process` without using the Read tool first — the script handles all file I/O and reading it beforehand wastes time and context.
+Pass source file paths directly to `biomapi.py process` — never use the `Read` tool on them. The script handles all I/O; the LLM never sees the source file contents. Reading `saved_json` afterwards (to present the JSON artifact) is the only intentional file read.
+
+For CSV export, use the `csv` command with the `saved_json` paths — never build CSV manually.
 
 ## Multiple Files
 
@@ -167,4 +185,4 @@ When multiple files are provided, pass all paths in a **single** `biomapi.py pro
 python3 scripts/biomapi.py process file1.pdf file2.pdf file3.pdf --pin
 ```
 
-The script outputs one JSON object per line, in input order. Present each as its own compact block. Only add a comparison summary if the user asks for one.
+The script outputs one JSON object per line, in input order. Present each with its own info block and JSON artifact. Only add a comparison summary if the user asks for one.
