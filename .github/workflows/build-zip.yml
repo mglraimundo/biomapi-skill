@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'skills/biomapi/**'
+      - 'cli/**'
 
 jobs:
   build:
@@ -16,12 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build zip
+      - name: Build biomapi-skill.zip
         run: cd skills && zip -r ../biomapi-skill.zip biomapi/
 
-      - name: Commit zip
+      - name: Build biomapi-cli.zip
+        run: |
+          mkdir -p _cli_build
+          cp skills/biomapi/scripts/biomapi.py _cli_build/biomapi.py
+          cp cli/README.md _cli_build/README.md
+          cd _cli_build && zip -r ../biomapi-cli.zip .
+
+      - name: Commit zips
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add biomapi-skill.zip
-          git diff --cached --quiet && echo "No changes" || git commit -m "Rebuild biomapi-skill.zip" && git push
+          git add biomapi-skill.zip biomapi-cli.zip
+          git diff --cached --quiet && echo "No changes" || git commit -m "Rebuild distribution zips" && git push

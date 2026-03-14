@@ -106,9 +106,25 @@ The JSON output is compatible with BiomAPI's re-upload flow for validation and e
 
 Public access works out of the box with a daily limit of 30 extractions per IP. Set `BIOMAPI_KEY` for higher limits.
 
+## Standalone CLI
+
+No AI assistant? Use `biomapi.py` directly from the terminal — zero dependencies, pure Python stdlib.
+
+```bash
+# Download biomapi-cli.zip, unzip, then:
+python biomapi.py process patient_report.pdf --pin
+python biomapi.py retrieve lunar-rocket-731904
+python biomapi.py csv *.json --output ./exports
+python biomapi.py status
+```
+
+Results are saved as JSON files next to the source file. See [`cli/README.md`](cli/README.md) for the full reference including CSV columns, batch scripting examples, and error handling.
+
+[**Download biomapi-cli.zip**](biomapi-cli.zip)
+
 ## How it works
 
-The skill includes a zero-dependency Python script (`scripts/biomapi.py`) that sends files to the BiomAPI `/api/v1/biom/process` endpoint for extraction, then returns structured JSON that the AI assistant formats into a clinical summary.
+The skill includes a zero-dependency Python script (`scripts/biomapi.py`) that sends files to the BiomAPI `/api/v1/biom/process` endpoint for extraction, then returns structured JSON that the AI assistant formats into a clinical summary. The same script powers the standalone CLI.
 
 ## License
 
