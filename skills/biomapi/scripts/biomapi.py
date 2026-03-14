@@ -191,7 +191,7 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
     patient = (result.get("data") or {}).get("patient", {})
     return {
         "patient_id": patient.get("patient_id"),
-        "patient_name": patient.get("patient_name"),
+        "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
         "biompin": result.get("biompin"),
         "saved_json": saved_path,
@@ -235,7 +235,7 @@ def cmd_retrieve(biompin_code: str) -> None:
     patient = (result.get("data") or {}).get("patient", {})
     print(json.dumps({
         "patient_id": patient.get("patient_id"),
-        "patient_name": patient.get("patient_name"),
+        "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
         "biompin": result.get("biompin") or biompin_code,
         "saved_json": saved_path,
@@ -247,10 +247,14 @@ _EYE_FIELDS = [
     "WTW", "LT", "CCT", "lens_status", "post_refractive", "keratometric_index",
 ]
 
+_PK_EYE_FIELDS = ["PK1_magnitude", "PK1_axis", "PK2_magnitude", "PK2_axis"]
+
 _BYEYE_COLS = (
     ["filename", "right_eye", "biometer_device_name", "biometer_manufacturer",
      "patient_name", "patient_patient_id", "patient_date_of_birth", "patient_gender"]
     + _EYE_FIELDS
+    + ["pk_device_name"]
+    + _PK_EYE_FIELDS
 )
 
 
@@ -259,6 +263,7 @@ def _parse_report_json(json_data: dict, filename: str) -> dict:
     data = json_data.get("data") or {}
     biometer = data.get("biometer") or {}
     patient = data.get("patient") or {}
+    pk = (json_data.get("extra_data") or {}).get("posterior_keratometry") or {}
     return {
         "filename": filename,
         "biometer_device_name": biometer.get("device_name") or "",
@@ -269,6 +274,9 @@ def _parse_report_json(json_data: dict, filename: str) -> dict:
         "patient_gender": patient.get("gender") or "",
         "right_eye": data.get("right_eye") or {},
         "left_eye": data.get("left_eye") or {},
+        "pk_device_name": pk.get("pk_device_name") or "",
+        "right_eye_pk": pk.get("right_eye") or {},
+        "left_eye_pk": pk.get("left_eye") or {},
     }
 
 
@@ -296,6 +304,7 @@ def cmd_csv(json_paths: list[str], output_dir: str) -> None:
                 "patient_name": "", "patient_patient_id": "",
                 "patient_date_of_birth": "", "patient_gender": "",
                 "right_eye": {}, "left_eye": {},
+                "pk_device_name": "", "right_eye_pk": {}, "left_eye_pk": {},
             })
 
     out_path = os.path.join(output_dir, "biomapi_byeye.csv")
@@ -305,11 +314,14 @@ def cmd_csv(json_paths: list[str], output_dir: str) -> None:
         for row in rows:
             shared = {k: row[k] for k in _BYEYE_COLS[2:8]}  # device + patient fields
             shared["filename"] = row["filename"]
-            for eye_key, right_val in [("right_eye", "1"), ("left_eye", "0")]:
+            shared["pk_device_name"] = row.get("pk_device_name", "")
+            for eye_key, pk_eye_key, right_val in [("right_eye", "right_eye_pk", "1"), ("left_eye", "left_eye_pk", "0")]:
                 eye_row = shared.copy()
                 eye_row["right_eye"] = right_val
                 for field in _EYE_FIELDS:
                     eye_row[field] = _v(row[eye_key].get(field))
+                for field in _PK_EYE_FIELDS:
+                    eye_row[field] = _v(row[pk_eye_key].get(field))
                 writer.writerow(eye_row)
 
     print(json.dumps({"byeye": os.path.abspath(out_path)}))
