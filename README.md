@@ -23,11 +23,13 @@ PK Support = posterior keratometry (PK1/PK2) extraction for toric IOL calculatio
 
 ## Installation
 
-### Claude.ai / ChatGPT (web)
+### Claude.ai / ChatGPT
 
 1. Download [`biomapi-skill.zip`](biomapi-skill.zip) from this repo
-2. Go to **Customize > Skills** and click **+** > **Upload a skill**
-3. Upload the zip — the skill appears in your list and activates automatically
+2. Follow your platform's skill upload instructions to add the skill
+3. The skill activates automatically once installed
+
+Requires network access enabled and `biomapi.com` whitelisted in your AI assistant settings.
 
 ### Claude Code (CLI)
 
@@ -38,7 +40,9 @@ PK Support = posterior keratometry (PK1/PK2) extraction for toric IOL calculatio
 
 Updates are fetched automatically when the plugin version is bumped.
 
-### OpenAI Codex CLI
+### Codex CLI
+
+Download and extract the zip, then copy to your Codex skills folder:
 
 ```bash
 cp -r skills/biomapi ~/.codex/skills/
@@ -46,17 +50,16 @@ cp -r skills/biomapi ~/.codex/skills/
 
 ## Usage
 
-Just upload a biometry PDF or image to the conversation. The skill activates automatically and returns a formatted clinical table:
+Just upload a biometry PDF or image to the conversation. The skill activates automatically and returns a compact summary:
 
-| Measurement | Right Eye (OD) | Left Eye (OS) |
-|-------------|----------------|---------------|
-| AL (mm)     | 23.45          | 23.52         |
-| ACD (mm)    | 3.12           | 3.08          |
-| K1 (D) @ axis | 43.25 @ 5°  | 43.00 @ 175°  |
-| K2 (D) @ axis | 44.50 @ 95° | 44.25 @ 85°   |
-| WTW (mm)    | 11.8           | 11.9          |
-| LT (mm)     | 4.52           | 4.48          |
-| CCT (um)    | 545            | 542           |
+```
+Patient: JD (ID: 12345)
+BiomPIN: lunar-rocket-731904
+BiomAPI: https://biomapi.com/pin/lunar-rocket-731904
+ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=lunar-rocket-731904
+```
+
+Ask for the **biometry table** if you want the full measurements view. Multiple files are processed simultaneously.
 
 ### Extracted Data
 
@@ -68,11 +71,7 @@ Just upload a biometry PDF or image to the conversation. The skill activates aut
 
 ### BiomPIN sharing
 
-A BiomPIN is generated **by default** with every extraction — no need to ask for it. The output includes:
-
-- **BiomPIN code** for sharing (e.g., `lunar-rocket-731904`)
-- **Direct URL** to view results: `https://biomapi.com/pin/lunar-rocket-731904`
-- **ESCRS IOL Calculator link** pre-loaded with the biometry data
+A BiomPIN is generated **by default** with every extraction — no need to ask for it. The output includes a direct URL to view results and an ESCRS IOL Calculator link pre-loaded with the biometry data.
 
 To skip BiomPIN generation, explicitly ask:
 
@@ -84,13 +83,11 @@ Retrieve shared data later:
 
 ### ESCRS IOL Calculator
 
-Ask for an IOL calculation and the skill extracts the biometry and returns a direct link to the ESCRS IOL Calculator pre-loaded with the data:
+The ESCRS link is included in every default output. To go straight to the calculator:
 
 > "Calculate the IOL for this biometry"
 
 > "Run this through the ESCRS calculator"
-
-Only the calculator link is returned — no table or raw JSON — so you can go straight to the formulas.
 
 ### Save results
 

@@ -98,24 +98,33 @@ python3 scripts/biomapi.py status
 
 ## Output Behavior
 
-**Be concise.** The user is a clinical expert. After extraction, present ONLY the data table below. Do NOT:
+**Be concise.** The user is a clinical expert. Do NOT:
 - Comment on, interpret, or analyze the biometric values
 - Provide clinical opinions or surgical recommendations
 - Explain what the measurements mean
 - Flag values as unusual or noteworthy
-- Add any commentary beyond the table itself
+- Add any commentary beyond what is specified below
 
-The only exception: if a value falls **outside the validation ranges** defined in [reference.md](reference.md) (e.g., AL outside 14–40mm, K outside 20–99D), append a brief warning below the table. Otherwise, stay silent — the user knows how to interpret the data.
+The only exception: if a value falls **outside the validation ranges** defined in [reference.md](reference.md) (e.g., AL outside 14–40mm, K outside 20–99D), append a brief warning. Otherwise, stay silent — the user knows how to interpret the data.
 
 Provide commentary, interpretation, or recommendations only if the user **explicitly asks**.
 
 ## Presenting Results
 
-Present results as a compact table matching the BiomAPI website format.
+**Default output** — one compact block per file:
 
-**Patient info** (one line): `NAME (ID) • DOB • Gender`
+```
+Patient: NAME (ID: 12345)
+BiomPIN: word-word-123456
+BiomAPI: https://biomapi.com/pin/word-word-123456
+ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
+```
 
-**Biometry table** — device name as header, both eyes side by side, measurements in this exact order:
+- **Process with `--pin` by default**; omit only if the user explicitly requests no BiomPIN
+- If no BiomPIN: show patient line only, no URLs
+- No table, no raw JSON unless the user explicitly asks
+
+**If the user asks for the biometry table**, present it as a compact table with device name as header, both eyes side by side, measurements in this exact order:
 
 | {Device Name} | Right (OD) | Left (OS) |
 |---|---|---|
@@ -141,46 +150,16 @@ If `extra_data.posterior_keratometry` exists, add a **Posterior Keratometry** ta
 | PK2 (D) | 6.45 | 6.38 |
 | PK2 Axis (°) | 98 | 82 |
 
-Rules:
+Table formatting rules:
 - Show `null` values as `—`
 - K1/K2 magnitude and axis are always separate rows (not combined)
 - AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
-- **Process with `--pin` by default**; omit only if the user explicitly requests no BiomPIN
 
-**After the table(s)**, always include:
-
-1. **BiomPIN block** — the PIN, expiration, and a clickable URL:
-
-```
-BiomPIN: word-word-123456
-URL: https://biomapi.com/pin/word-word-123456
-ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
-```
-
-2. **Raw JSON** — the full API response in a fenced code block for easy copy-paste:
-
-~~~
-```json
-{ full JSON response here }
-```
-~~~
-
-If the user opted out of BiomPIN, skip the BiomPIN block and URL — just show the table and raw JSON.
-
-**That's it.** No metadata footer, no commentary. Just the table, BiomPIN, and raw JSON.
+**If the user asks for the raw JSON**, output the full API response in a fenced code block.
 
 ## ESCRS IOL Calculation Shortcut
 
-When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "calculate the IOL", "run this through ESCRS", etc.) given a biometry PDF or image:
-
-1. Process the file normally with `--pin` (the BiomPIN is required for the ESCRS link)
-2. Present **only** the preformed ESCRS IOL Calculator link — no table, no BiomPIN block, no raw JSON:
-
-```
-ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
-```
-
-That's the entire output. The user wants to go straight to the calculator.
+When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "calculate the IOL", "run this through ESCRS", etc.) given a biometry PDF or image, the default output already includes the ESCRS link — no special handling needed. Just process normally with `--pin`.
 
 ## Saving Results
 
@@ -194,6 +173,10 @@ The script outputs JSON with `"error": true` on failure. Keep error messages bri
 - **Unsupported file type**: Only `.pdf`, `.png`, `.jpg`, `.jpeg` supported.
 - **File too large**: Max 20MB.
 
+## File Handling
+
+**Do NOT use the Read tool on biometry files.** Pass the file path directly to `biomapi.py process` — the script handles all file I/O. Reading the file first wastes time and context.
+
 ## Multiple Files
 
-Process sequentially. Present each result as its own table. Only add a comparison summary if the user asks for one.
+When multiple files are provided, launch **all** `biomapi.py process` calls simultaneously as parallel bash commands — do not wait for one to finish before starting the next. Present each result as its own compact block in the order they complete. Only add a comparison summary if the user asks for one.
