@@ -63,38 +63,6 @@ python3 scripts/biomapi.py retrieve word-word-123456
 python3 scripts/biomapi.py status
 ```
 
-## API Response Structure
-
-```json
-{
-  "success": true,
-  "data": {
-    "biometer": { "device_name": "IOLMaster700", "manufacturer": "Zeiss" },
-    "patient": { "name": "JD", "patient_id": "12345", "date_of_birth": "1965-03-15", "gender": "Male" },
-    "right_eye": {
-      "AL": 23.45, "ACD": 3.12,
-      "K1_magnitude": 43.25, "K1_axis": 5,
-      "K2_magnitude": 44.50, "K2_axis": 95,
-      "WTW": 11.8, "LT": 4.52, "CCT": 545,
-      "lens_status": "Phakic", "post_refractive": "None",
-      "keratometric_index": 1.3375
-    },
-    "left_eye": { "AL": 23.52, "ACD": 3.08, "...": "..." }
-  },
-  "extra_data": {
-    "posterior_keratometry": {
-      "pk_device_name": "IOLMaster700",
-      "right_eye": { "PK1_magnitude": 6.12, "PK1_axis": 8, "PK2_magnitude": 6.45, "PK2_axis": 98 },
-      "left_eye": { "PK1_magnitude": 6.08, "PK1_axis": 172, "PK2_magnitude": 6.38, "PK2_axis": 82 }
-    }
-  },
-  "metadata": {
-    "api_version": "0.9.7",
-    "extraction_info": { "extraction_method": "BiomAI", "...": "..." },
-    "biompin": { "pin": "lunar-rocket-731904", "expires_at_timestamp": "2025-01-18T10:30:00Z" }
-  }
-}
-```
 
 ## Output Behavior
 
@@ -155,7 +123,7 @@ Table formatting rules:
 - K1/K2 magnitude and axis are always separate rows (not combined)
 - AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
 
-**If the user asks for the raw JSON**, output the full API response in a fenced code block.
+**If the user asks to save the JSON**, write it as an artifact/object (a named file attachment the user can download), not a fenced code block. The JSON can be re-uploaded to BiomAPI for validation via the BiomJSON engine.
 
 ## ESCRS IOL Calculation Shortcut
 
@@ -163,7 +131,7 @@ When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "c
 
 ## Saving Results
 
-Only offer to save if the user asks. Default format is the full JSON response saved to a file (e.g., `patient_biometry.json`). The JSON can be re-uploaded to BiomAPI for validation via the BiomJSON engine. For CSV, create a row per eye with all measurements as columns — but only if requested.
+Only save if the user asks. For CSV, create a row per eye with all measurements as columns — but only if requested.
 
 ## Error Handling
 
@@ -175,7 +143,7 @@ The script outputs JSON with `"error": true` on failure. Keep error messages bri
 
 ## File Handling
 
-**Do NOT use the Read tool on biometry files.** Pass the file path directly to `biomapi.py process` — the script handles all file I/O. Reading the file first wastes time and context.
+When the user explicitly provides files as biometry printouts for processing, pass the file path directly to `biomapi.py process` without using the Read tool first — the script handles all file I/O and reading it beforehand wastes time and context.
 
 ## Multiple Files
 
