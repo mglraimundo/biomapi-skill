@@ -72,16 +72,23 @@ python3 scripts/biomapi.py status
 
 ## Output Behavior
 
-**Be concise.** The user is a clinical expert. Do NOT:
-- Comment on, interpret, or analyze the biometric values
-- Provide clinical opinions or surgical recommendations
-- Explain what the measurements mean
-- Flag values as unusual or noteworthy
-- Add any commentary beyond what is specified below
+**Be concise.** The user is a clinical expert. Do NOT comment on, interpret, or analyze biometric values — the compact output contains only patient info and links, not measurements. Provide commentary or recommendations only if the user **explicitly asks**.
 
-The only exception: if a value falls **outside the validation ranges** defined in [reference.md](reference.md) (e.g., AL outside 14–40mm, K outside 20–99D), append a brief warning. Otherwise, stay silent — the user knows how to interpret the data.
+## Script Output Format
 
-Provide commentary, interpretation, or recommendations only if the user **explicitly asks**.
+The script always outputs a **compact summary** JSON (not the full API response) to stdout — one object per file in input order:
+
+```json
+{
+  "patient_id": "12345",
+  "patient_name": "John Doe",
+  "device": "IOLMaster 700",
+  "biompin": "lunar-rocket-731904",
+  "saved_json": "/abs/path/to/biomapi-12345-iolmaster700.json"
+}
+```
+
+The **full raw API response** (including all metadata, LLM metrics, timings) is always saved to disk at `saved_json` automatically — no user action required.
 
 ## Presenting Results
 
@@ -92,13 +99,14 @@ Patient: NAME (ID: 12345)
 BiomPIN: word-word-123456
 BiomAPI: https://biomapi.com/pin/word-word-123456
 ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=word-word-123456
+JSON: /abs/path/to/biomapi-12345-iolmaster700.json
 ```
 
 - **Process with `--pin` by default**; omit only if the user explicitly requests no BiomPIN
-- If no BiomPIN: show patient line only, no URLs
-- No table, no raw JSON unless the user explicitly asks
+- If no BiomPIN: show patient and JSON lines only, no URLs
+- No table, no raw JSON content unless the user explicitly asks
 
-**If the user asks for the biometry table**, present it as a compact table with device name as header, both eyes side by side, measurements in this exact order:
+**If the user asks for the biometry table**, use the `Read` tool to read `saved_json` first, then render the table from the file — never reconstruct from context. Present as a compact table with device name as header, both eyes side by side, measurements in this exact order:
 
 | {Device Name} | Right (OD) | Left (OS) |
 |---|---|---|
@@ -129,7 +137,7 @@ Table formatting rules:
 - K1/K2 magnitude and axis are always separate rows (not combined)
 - AL, ACD, LT, WTW: 2 decimal places. CCT: 0 decimals. n: 4 decimals. K1/K2/PK: 2 decimals. Axes: 0 decimals.
 
-**If the user asks to save the JSON**, write it as an artifact/object (a named file attachment the user can download), not a fenced code block. The JSON can be re-uploaded to BiomAPI for validation via the BiomJSON engine.
+**If the user asks for the JSON or to save it**: the file is already on disk at `saved_json`. Tell the user the path. Never reconstruct the JSON from context — doing so silently drops the `metadata` section (LLM metrics, timings, etc.).
 
 ## ESCRS IOL Calculation Shortcut
 
@@ -137,7 +145,7 @@ When the user asks for an **ESCRS IOL calculation** (or similar phrasing like "c
 
 ## Saving Results
 
-Only save if the user asks. For CSV, create a row per eye with all measurements as columns — but only if requested.
+The full JSON is always saved automatically to disk alongside the source file (filename: `biomapi-{patient_id}-{device}.json`, same convention as the web interface download). No extra action needed for JSON. For CSV, create a row per eye with all measurements as columns — but only if requested.
 
 ## Error Handling
 

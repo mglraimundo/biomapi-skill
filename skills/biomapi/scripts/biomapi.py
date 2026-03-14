@@ -10,6 +10,12 @@ Usage:
     biomapi.py retrieve <biompin_code>
     biomapi.py status
 
+Stdout (process/retrieve):
+    One JSON object per file, in input order:
+      {"patient_id": ..., "patient_name": ..., "device": ..., "biompin": ..., "saved_json": "/abs/path.json"}
+    The full raw API response is always saved to disk at saved_json.
+    On error: {"error": true, "detail": "...", ...}
+
 Environment:
     BIOMAPI_URL  - API base URL (default: https://biomapi.com)
     BIOMAPI_KEY  - Optional API key for higher rate limits
@@ -17,9 +23,11 @@ Environment:
 
 import json
 import os
+import re
 import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -102,8 +110,54 @@ def _request(method: str, url: str, body: bytes | None = None, content_type: str
         return {"error": True, "detail": f"Connection failed: {e.reason}"}
 
 
+def _generate_filename(result: dict) -> str:
+    """Mirror generateSmartFilename from downloadManager.js.
+
+    Format: biomapi-{patient_id}-{device}.json
+    - patient_id: lowercase, [^a-z0-9-] → '-', collapse runs, max 50 chars
+    - device: lowercase, only [a-z0-9], max 30 chars
+    - Fallbacks: YYYY-MM-DD for missing patient_id, 'unknown' for missing device
+    """
+    patient_id = (result.get("data") or {}).get("patient", {}).get("patient_id")
+    device_name = (result.get("data") or {}).get("biometer", {}).get("device_name")
+
+    if patient_id:
+        id_part = re.sub(r"-+", "-", re.sub(r"[^a-z0-9-]", "-", str(patient_id).lower()))[:50]
+    else:
+        id_part = date.today().isoformat()
+
+    if device_name:
+        device_part = re.sub(r"[^a-z0-9]", "", str(device_name).lower())[:30]
+    else:
+        device_part = "unknown"
+
+    return f"biomapi-{id_part}-{device_part}.json"
+
+
+def _save_result(result: dict, source_path: str) -> str:
+    """Save full API response JSON next to source_path. Returns absolute save path."""
+    filename = _generate_filename(result)
+    save_dir = os.path.dirname(source_path) or os.getcwd()
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, filename)
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        return os.path.abspath(save_path)
+    except OSError:
+        # Fallback to cwd if source dir is not writable
+        save_path = os.path.join(os.getcwd(), filename)
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        return os.path.abspath(save_path)
+
+
 def _process_one(file_path: str, generate_pin: bool) -> dict:
-    """Validate and upload a single biometry file. Returns result dict."""
+    """Validate and upload a single biometry file.
+
+    Returns a compact summary dict (not the full API response) so the LLM
+    context stays small. The full raw response is always saved to disk first.
+    """
     file_path = os.path.abspath(file_path)
 
     if not os.path.isfile(file_path):
@@ -122,7 +176,22 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
         return {"error": True, "file": file_path, "detail": f"File too large ({file_size_mb:.1f}MB). Maximum: 20MB"}
 
     body, content_type = _build_multipart(file_path, generate_pin)
-    return _request("POST", f"{BASE_URL}/api/v1/biom/process", body=body, content_type=content_type)
+    result = _request("POST", f"{BASE_URL}/api/v1/biom/process", body=body, content_type=content_type)
+
+    if result.get("error"):
+        return result
+
+    # Save full response to disk before returning — metadata is preserved here
+    saved_path = _save_result(result, file_path)
+
+    patient = (result.get("data") or {}).get("patient", {})
+    return {
+        "patient_id": patient.get("patient_id"),
+        "patient_name": patient.get("patient_name"),
+        "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
+        "biompin": result.get("biompin"),
+        "saved_json": saved_path,
+    }
 
 
 def cmd_process(file_paths: list[str], generate_pin: bool = False) -> None:
@@ -153,9 +222,20 @@ def cmd_retrieve(biompin_code: str) -> None:
 
     url = f"{BASE_URL}/api/v1/biom/retrieve?biom_pin={quote(biompin_code)}"
     result = _request("GET", url)
-    print(json.dumps(result))
+
     if result.get("error"):
+        print(json.dumps(result))
         sys.exit(1)
+
+    saved_path = _save_result(result, os.path.join(os.getcwd(), "_retrieve"))
+    patient = (result.get("data") or {}).get("patient", {})
+    print(json.dumps({
+        "patient_id": patient.get("patient_id"),
+        "patient_name": patient.get("patient_name"),
+        "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
+        "biompin": result.get("biompin") or biompin_code,
+        "saved_json": saved_path,
+    }))
 
 
 def cmd_status() -> None:
