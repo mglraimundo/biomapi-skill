@@ -102,7 +102,7 @@ The script always outputs a **compact summary** JSON (not the full API response)
 
 The **full raw API response** (including all metadata, LLM metrics, timings) is always saved to disk at `saved_json` automatically.
 
-**Patient name**: always use `patient_name` exactly as returned in the compact summary — it comes directly from the API's `data.patient.patient_name` field, which may be abbreviated or anonymized. Never expand, reconstruct, or infer the name from the filename, PDF context, or any other source.
+**Patient name**: ALWAYS use `patient_name` exactly as returned in the **compact stdout summary** (e.g., `"patient_name": "MAG"`). This is often an acronym or abbreviation — that is intentional. Do NOT replace it with the full name from the saved JSON, the PDF, the filename, or any other source. Even if the full JSON contains a longer or different name string, the compact summary's `patient_name` is the canonical display name. Never expand, reconstruct, or infer the name.
 
 ## Presenting Results
 
@@ -113,10 +113,15 @@ The **full raw API response** (including all metadata, LLM metrics, timings) is 
 
 ```
 Patient: J. DOE (ID: 12345)
+
 BiomPIN: lunar-rocket-731904
+
 BiomAPI: https://biomapi.com/pin/lunar-rocket-731904
+
 ESCRS IOL Calculator: https://appiolcalculator-ts.azurewebsites.net/?biompin=lunar-rocket-731904
 ```
+
+Each line (Patient, BiomPIN, BiomAPI link, ESCRS link) MUST be separated by a blank line for readability. Do not collapse them into a single block.
 
 ```json
 { ...full contents of saved_json... }

@@ -14,6 +14,7 @@ Usage:
 Stdout (process/retrieve):
     One JSON object per file, in input order:
       {"patient_id": ..., "patient_name": ..., "device": ..., "biompin": ..., "saved_json": "/abs/path.json"}
+    biompin is extracted from the API response at metadata.biompin.pin.
     The full raw API response is always saved to disk at saved_json.
     On error: {"error": true, "detail": "...", ...}
 
@@ -189,11 +190,12 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
     saved_path = _save_result(result, file_path)
 
     patient = (result.get("data") or {}).get("patient", {})
+    biompin_info = (result.get("metadata") or {}).get("biompin") or {}
     return {
         "patient_id": patient.get("patient_id"),
         "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
-        "biompin": result.get("biompin"),
+        "biompin": biompin_info.get("pin") if isinstance(biompin_info, dict) else None,
         "saved_json": saved_path,
     }
 
@@ -233,11 +235,13 @@ def cmd_retrieve(biompin_code: str) -> None:
 
     saved_path = _save_result(result, os.path.join(os.getcwd(), "_retrieve"))
     patient = (result.get("data") or {}).get("patient", {})
+    biompin_info = (result.get("metadata") or {}).get("biompin") or {}
+    biompin = biompin_info.get("pin") if isinstance(biompin_info, dict) else None
     print(json.dumps({
         "patient_id": patient.get("patient_id"),
         "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
-        "biompin": result.get("biompin") or biompin_code,
+        "biompin": biompin or biompin_code,
         "saved_json": saved_path,
     }))
 
