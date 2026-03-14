@@ -31,11 +31,9 @@ Set environment variables before running, or export them in your shell profile:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BIOMAPI_URL` | No | `https://biomapi.com` | API base URL (change for self-hosted) |
 | `BIOMAPI_KEY` | No | *(none)* | API key for higher daily rate limits |
 
 ```bash
-export BIOMAPI_URL=https://biomapi.com
 export BIOMAPI_KEY=biom_your_key_here   # optional
 ```
 

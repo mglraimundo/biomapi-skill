@@ -101,7 +101,6 @@ The JSON output is compatible with BiomAPI's re-upload flow for validation and e
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BIOMAPI_URL` | No | `https://biomapi.com` | API base URL |
 | `BIOMAPI_KEY` | No | *(none)* | API key for higher rate limits |
 
 Public access works out of the box with a daily limit of 30 extractions per IP. Set `BIOMAPI_KEY` for higher limits.

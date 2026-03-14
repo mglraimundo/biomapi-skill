@@ -21,7 +21,6 @@ Stdout (csv):
     {"byeye": "/abs/path/biomapi_byeye.csv"}
 
 Environment:
-    BIOMAPI_URL  - API base URL (default: https://biomapi.com)
     BIOMAPI_KEY  - Optional API key for higher rate limits
 """
 
@@ -37,7 +36,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-BASE_URL = os.environ.get("BIOMAPI_URL", "https://biomapi.com").rstrip("/")
+BASE_URL = "https://biomapi.com"
 API_KEY = os.environ.get("BIOMAPI_KEY", "")
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
