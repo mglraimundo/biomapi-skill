@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-BiomAPI Client - Zero-dependency client for BiomAPI biometry extraction.
+BiomAPI CLI - Zero-dependency client for BiomAPI biometry extraction.
 
 Processes biometry PDFs/images through the BiomAPI service and retrieves
-results via BiomPIN secure sharing codes.
+results via BiomPIN secure sharing codes. Also works as a Claude Code plugin
+and Codex skill.
 
 Usage:
-    biomapi.py process <file_path> [<file_path2> ...] [--pin]
+    biomapi.py process <file_path> [<file_path2> ...] [--no-pin] [--key <key>] [--gemini-key <key>]
     biomapi.py retrieve <biompin_code>
     biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
+    biomapi.py usage
     biomapi.py status
+    biomapi.py --help
 
 Stdout (process/retrieve):
     One JSON object per file, in input order:
       {"patient_id": ..., "patient_name": ..., "device": ..., "biompin": ..., "saved_json": "/abs/path.json"}
-    biompin is extracted from the API response at metadata.biompin.pin.
+    biompin is extracted from the API response at biompin.pin.
     The full raw API response is always saved to disk at saved_json.
     On error: {"error": true, "detail": "...", ...}
 
@@ -22,10 +25,14 @@ Stdout (csv):
     {"byeye": "/abs/path/biomapi_byeye.csv"}
 
 Environment:
-    BIOMAPI_KEY  - Optional API key for higher rate limits
+    BIOMAPI_KEY      - Optional API key for higher rate limits
+    GEMINI_API_KEY   - Optional: your own Gemini key (BYOK, bypasses process rate limits)
+
+Config file (~/.config/biomapi/config):
+    Simple KEY=VALUE format. Keys: BIOMAPI_KEY, GEMINI_API_KEY
+    Priority: CLI flags > environment variables > config file
 """
 
-import csv as csv_mod
 import json
 import os
 import re
@@ -37,10 +44,30 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-BASE_URL = "https://biomapi.com"
-API_KEY = os.environ.get("BIOMAPI_KEY", "")
+BASE_URL = os.environ.get("BIOMAPI_URL", "https://biomapi.com")
 
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+
+def _load_config() -> dict:
+    """Read ~/.config/biomapi/config if it exists. Simple KEY=VALUE format."""
+    config_path = os.path.join(os.path.expanduser("~"), ".config", "biomapi", "config")
+    config = {}
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    config[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    return config
+
+
+_config = _load_config()
+API_KEY = os.environ.get("BIOMAPI_KEY") or _config.get("BIOMAPI_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or _config.get("GEMINI_API_KEY", "")
+
+SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".json"}
 
 
 def _build_multipart(file_path: str, generate_pin: bool) -> tuple[bytes, str]:
@@ -58,6 +85,7 @@ def _build_multipart(file_path: str, generate_pin: bool) -> tuple[bytes, str]:
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
+        ".json": "application/json",
     }
     content_type = content_types.get(ext, "application/octet-stream")
 
@@ -90,11 +118,13 @@ def _build_multipart(file_path: str, generate_pin: bool) -> tuple[bytes, str]:
     return body, f"multipart/form-data; boundary={boundary}"
 
 
-def _request(method: str, url: str, body: bytes | None = None, content_type: str | None = None) -> dict:
-    """Make an HTTP request and return parsed JSON. Returns error dict on failure."""
+def _request(method: str, url: str, body: bytes | None = None, content_type: str | None = None, raw: bool = False) -> dict | str:
+    """Make an HTTP request. Returns parsed JSON dict, or raw string if raw=True. Returns error dict on failure."""
     headers = {}
     if API_KEY:
         headers["Authorization"] = f"Bearer {API_KEY}"
+    if GEMINI_API_KEY:
+        headers["X-Gemini-API-Key"] = GEMINI_API_KEY
     if content_type:
         headers["Content-Type"] = content_type
 
@@ -102,12 +132,16 @@ def _request(method: str, url: str, body: bytes | None = None, content_type: str
 
     try:
         with urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            response_body = resp.read().decode("utf-8")
+            if raw:
+                return response_body
+            return json.loads(response_body)
     except HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
         try:
             error_json = json.loads(error_body)
-            detail = error_json.get("detail", error_body)
+            error = error_json.get("error", {})
+            detail = error.get("message") or error_json.get("detail", error_body)
         except json.JSONDecodeError:
             detail = error_body
         return {"error": True, "status": e.code, "detail": detail}
@@ -123,7 +157,7 @@ def _generate_filename(result: dict) -> str:
     - device: lowercase, only [a-z0-9], max 30 chars
     - Fallbacks: YYYY-MM-DD for missing patient_id, 'unknown' for missing device
     """
-    patient_id = (result.get("data") or {}).get("patient", {}).get("patient_id")
+    patient_id = (result.get("data") or {}).get("patient", {}).get("id")
     device_name = (result.get("data") or {}).get("biometer", {}).get("device_name")
 
     if patient_id:
@@ -190,9 +224,9 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
     saved_path = _save_result(result, file_path)
 
     patient = (result.get("data") or {}).get("patient", {})
-    biompin_info = (result.get("metadata") or {}).get("biompin") or {}
+    biompin_info = result.get("biompin") or {}
     return {
-        "patient_id": patient.get("patient_id"),
+        "patient_id": patient.get("id"),
         "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
         "biompin": biompin_info.get("pin") if isinstance(biompin_info, dict) else None,
@@ -200,7 +234,7 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
     }
 
 
-def cmd_process(file_paths: list[str], generate_pin: bool = False) -> None:
+def cmd_process(file_paths: list[str], generate_pin: bool = True) -> None:
     """Upload one or more biometry files for AI extraction, concurrently."""
     if len(file_paths) == 1:
         result = _process_one(file_paths[0], generate_pin)
@@ -235,10 +269,10 @@ def cmd_retrieve(biompin_code: str) -> None:
 
     saved_path = _save_result(result, os.path.join(os.getcwd(), "_retrieve"))
     patient = (result.get("data") or {}).get("patient", {})
-    biompin_info = (result.get("metadata") or {}).get("biompin") or {}
+    biompin_info = result.get("biompin") or {}
     biompin = biompin_info.get("pin") if isinstance(biompin_info, dict) else None
     print(json.dumps({
-        "patient_id": patient.get("patient_id"),
+        "patient_id": patient.get("id"),
         "patient_name": patient.get("name"),
         "device": (result.get("data") or {}).get("biometer", {}).get("device_name"),
         "biompin": biompin or biompin_code,
@@ -246,89 +280,40 @@ def cmd_retrieve(biompin_code: str) -> None:
     }))
 
 
-_EYE_FIELDS = [
-    "AL", "ACD", "K1_magnitude", "K1_axis", "K2_magnitude", "K2_axis",
-    "WTW", "LT", "CCT", "lens_status", "post_refractive", "keratometric_index",
-]
-
-_PK_EYE_FIELDS = ["PK1_magnitude", "PK1_axis", "PK2_magnitude", "PK2_axis"]
-
-_BYEYE_COLS = (
-    ["filename", "right_eye", "biometer_device_name", "biometer_manufacturer",
-     "patient_name", "patient_patient_id", "patient_date_of_birth", "patient_gender"]
-    + _EYE_FIELDS
-    + ["pk_device_name"]
-    + _PK_EYE_FIELDS
-)
-
-
-def _parse_report_json(json_data: dict, filename: str) -> dict:
-    """Flatten a StandardAPIResponse JSON into row data for CSV export."""
-    data = json_data.get("data") or {}
-    biometer = data.get("biometer") or {}
-    patient = data.get("patient") or {}
-    pk = (json_data.get("extra_data") or {}).get("posterior_keratometry") or {}
-    return {
-        "filename": filename,
-        "biometer_device_name": biometer.get("device_name") or "",
-        "biometer_manufacturer": biometer.get("manufacturer") or "",
-        "patient_name": patient.get("name") or "",
-        "patient_patient_id": patient.get("patient_id") or "",
-        "patient_date_of_birth": patient.get("date_of_birth") or "",
-        "patient_gender": patient.get("gender") or "",
-        "right_eye": data.get("right_eye") or {},
-        "left_eye": data.get("left_eye") or {},
-        "pk_device_name": pk.get("pk_device_name") or "",
-        "right_eye_pk": pk.get("right_eye") or {},
-        "left_eye_pk": pk.get("left_eye") or {},
-    }
-
-
-def _v(val) -> str:
-    return "" if val is None else str(val)
-
-
 def cmd_csv(json_paths: list[str], output_dir: str) -> None:
-    """Generate a byeye CSV from one or more BiomAPI result JSON files."""
+    """Generate a byeye CSV by sending JSON files to the API's /biom/csv endpoint."""
     os.makedirs(output_dir, exist_ok=True)
 
-    rows = []
-    for path in json_paths:
-        path = os.path.abspath(path)
-        filename = os.path.basename(path)
+    responses = []
+    for p in json_paths:
+        p = os.path.abspath(p)
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                json_data = json.load(f)
-            rows.append(_parse_report_json(json_data, filename))
+            with open(p, encoding="utf-8") as f:
+                responses.append({"json_data": json.load(f), "filename": os.path.basename(p)})
         except Exception as e:
-            print(json.dumps({"warning": f"Could not parse {filename}: {e}"}), file=sys.stderr)
-            rows.append({
-                "filename": filename,
-                "biometer_device_name": "", "biometer_manufacturer": "",
-                "patient_name": "", "patient_patient_id": "",
-                "patient_date_of_birth": "", "patient_gender": "",
-                "right_eye": {}, "left_eye": {},
-                "pk_device_name": "", "right_eye_pk": {}, "left_eye_pk": {},
-            })
+            print(json.dumps({"error": True, "detail": f"Could not read {p}: {e}"}))
+            sys.exit(1)
+
+    payload = json.dumps({"responses": responses}).encode("utf-8")
+    result = _request("POST", f"{BASE_URL}/api/v1/biom/csv", body=payload, content_type="application/json", raw=True)
+
+    if isinstance(result, dict) and result.get("error"):
+        print(json.dumps(result))
+        sys.exit(1)
 
     out_path = os.path.join(output_dir, "biomapi_byeye.csv")
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv_mod.DictWriter(f, fieldnames=_BYEYE_COLS)
-        writer.writeheader()
-        for row in rows:
-            shared = {k: row[k] for k in _BYEYE_COLS[2:8]}  # device + patient fields
-            shared["filename"] = row["filename"]
-            shared["pk_device_name"] = row.get("pk_device_name", "")
-            for eye_key, pk_eye_key, right_val in [("right_eye", "right_eye_pk", "1"), ("left_eye", "left_eye_pk", "0")]:
-                eye_row = shared.copy()
-                eye_row["right_eye"] = right_val
-                for field in _EYE_FIELDS:
-                    eye_row[field] = _v(row[eye_key].get(field))
-                for field in _PK_EYE_FIELDS:
-                    eye_row[field] = _v(row[pk_eye_key].get(field))
-                writer.writerow(eye_row)
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        f.write(result)
 
     print(json.dumps({"byeye": os.path.abspath(out_path)}))
+
+
+def cmd_usage() -> None:
+    """Check current rate limit usage for the authenticated key or public IP."""
+    result = _request("GET", f"{BASE_URL}/api/v1/biom/usage")
+    print(json.dumps(result))
+    if isinstance(result, dict) and result.get("error"):
+        sys.exit(1)
 
 
 def cmd_status() -> None:
@@ -339,53 +324,136 @@ def cmd_status() -> None:
         sys.exit(1)
 
 
+_HELP = """\
+BiomAPI CLI — zero-dependency Python client for BiomAPI biometry extraction.
+
+Usage:
+  biomapi.py process <file> [<file2> ...]  [--no-pin] [--key <key>] [--gemini-key <key>]
+  biomapi.py retrieve <biompin_code>       [--key <key>]
+  biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
+  biomapi.py usage                         [--key <key>]
+  biomapi.py status
+  biomapi.py --help
+
+Commands:
+  process      Extract biometry from PDF/PNG/JPG/JPEG/JSON (max 20MB each).
+               Saves full JSON response next to each source file.
+               BiomPIN is generated by default; use --no-pin to skip.
+
+  retrieve     Fetch previously extracted data using a BiomPIN code.
+               Saves full JSON to the current directory.
+
+  csv          Export saved JSON results to a by-eye CSV via the API.
+               Requires network access. Output: biomapi_byeye.csv.
+
+  usage        Show current rate-limit usage for your key or public IP.
+
+  status       Health check — returns API version and available models.
+
+Options:
+  --no-pin          Skip BiomPIN generation on process (default: generate)
+  --key <key>       Override BIOMAPI_KEY (higher daily limits)
+  --gemini-key <k>  Override GEMINI_API_KEY (BYOK — unlimited processing)
+  -h, --help        Show this help message
+
+Environment variables:
+  BIOMAPI_KEY      BiomAPI key for higher rate limits on all endpoints
+  GEMINI_API_KEY   Your own Gemini API key (BYOK — bypasses process limits)
+  BIOMAPI_URL      API base URL (default: https://biomapi.com)
+
+Config file (~/.config/biomapi/config):
+  Simple KEY=VALUE pairs. Same keys as environment variables.
+  Priority: CLI flags > env vars > config file
+
+Access tiers:
+  No key             30 process / 1000 retrieve per day (per IP)
+  BIOMAPI_KEY        Custom quota per user
+  GEMINI_API_KEY     Unlimited process (uses your Gemini quota)
+
+Examples:
+  python biomapi.py process report.pdf
+  python biomapi.py process *.pdf --no-pin
+  python biomapi.py process report.pdf --key biom_abc123
+  python biomapi.py retrieve lunar-rocket-731904
+  python biomapi.py csv biomapi-*.json --output ./exports
+  python biomapi.py usage
+  python biomapi.py status
+"""
+
+
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: biomapi.py <process|retrieve|status> [args]", file=sys.stderr)
+    args = sys.argv[1:]
+
+    # Help
+    if not args or args[0] in ("-h", "--help", "help"):
+        print(_HELP)
+        sys.exit(0)
+
+    # Extract global flags: --key and --gemini-key (override module-level vars)
+    global API_KEY, GEMINI_API_KEY
+    filtered = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--key" and i + 1 < len(args):
+            API_KEY = args[i + 1]
+            i += 2
+        elif args[i] == "--gemini-key" and i + 1 < len(args):
+            GEMINI_API_KEY = args[i + 1]
+            i += 2
+        else:
+            filtered.append(args[i])
+            i += 1
+    args = filtered
+
+    if not args:
+        print("Usage: biomapi.py <process|retrieve|csv|usage|status> [args]", file=sys.stderr)
         sys.exit(1)
 
-    command = sys.argv[1]
+    command = args[0]
 
     if command == "process":
-        if len(sys.argv) < 3:
-            print("Usage: biomapi.py process <file_path> [<file_path2> ...] [--pin]", file=sys.stderr)
+        if len(args) < 2:
+            print("Usage: biomapi.py process <file_path> [<file_path2> ...] [--no-pin]", file=sys.stderr)
             sys.exit(1)
-        args = sys.argv[2:]
-        generate_pin = "--pin" in args
-        file_paths = [a for a in args if a != "--pin"]
+        rest = args[1:]
+        generate_pin = "--no-pin" not in rest
+        file_paths = [a for a in rest if a != "--no-pin"]
         cmd_process(file_paths, generate_pin)
 
     elif command == "retrieve":
-        if len(sys.argv) < 3:
+        if len(args) < 2:
             print("Usage: biomapi.py retrieve <biompin_code>", file=sys.stderr)
             sys.exit(1)
-        cmd_retrieve(sys.argv[2])
+        cmd_retrieve(args[1])
 
     elif command == "csv":
-        if len(sys.argv) < 3:
+        if len(args) < 2:
             print("Usage: biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]", file=sys.stderr)
             sys.exit(1)
-        args = sys.argv[2:]
+        rest = args[1:]
         output_dir = os.getcwd()
-        if "--output" in args:
-            idx = args.index("--output")
-            if idx + 1 >= len(args):
+        if "--output" in rest:
+            idx = rest.index("--output")
+            if idx + 1 >= len(rest):
                 print("Error: --output requires a directory argument", file=sys.stderr)
                 sys.exit(1)
-            output_dir = args[idx + 1]
-            args = args[:idx] + args[idx + 2:]
-        json_paths = [a for a in args if not a.startswith("--")]
+            output_dir = rest[idx + 1]
+            rest = rest[:idx] + rest[idx + 2:]
+        json_paths = [a for a in rest if not a.startswith("--")]
         if not json_paths:
             print("Error: no JSON files specified", file=sys.stderr)
             sys.exit(1)
         cmd_csv(json_paths, output_dir)
+
+    elif command == "usage":
+        cmd_usage()
 
     elif command == "status":
         cmd_status()
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print("Commands: process, retrieve, csv, status", file=sys.stderr)
+        print("Commands: process, retrieve, csv, usage, status", file=sys.stderr)
         sys.exit(1)
 
 

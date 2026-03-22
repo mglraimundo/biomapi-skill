@@ -1,4 +1,4 @@
-name: Build skill zip
+name: Build CLI zip
 
 on:
   workflow_dispatch:
@@ -17,9 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build biomapi-skill.zip
-        run: cd skills && zip -r ../biomapi-skill.zip biomapi/
-
       - name: Build biomapi-cli.zip
         run: |
           mkdir -p _cli_build
@@ -27,9 +24,9 @@ jobs:
           cp cli/README.md _cli_build/README.md
           cd _cli_build && zip -r ../biomapi-cli.zip .
 
-      - name: Commit zips
+      - name: Commit zip
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add biomapi-skill.zip biomapi-cli.zip
-          git diff --cached --quiet && echo "No changes" || git commit -m "Rebuild distribution zips" && git push
+          git add biomapi-cli.zip
+          git diff --cached --quiet && echo "No changes" || git commit -m "Rebuild distribution zip" && git push

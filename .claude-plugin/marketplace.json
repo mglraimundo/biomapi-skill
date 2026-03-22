@@ -5,12 +5,12 @@
   },
   "plugins": [
     {
-      "name": "biomapi-skill",
+      "name": "biomapi-cli",
       "source": {
         "source": "github",
-        "repo": "mglraimundo/biomapi-skill"
+        "repo": "mglraimundo/biomapi-cli"
       },
-      "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images) via biomapi.com"
+      "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images/JSON) via biomapi.com"
     }
   ]
 }

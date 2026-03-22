@@ -115,4 +115,4 @@ Posterior keratometry is measured per eye, same structure as anterior K values b
 | Field | Description |
 |-------|-------------|
 | `pin` | Sharing code in format `word-word-123456` |
-| `expires_at_timestamp` | ISO timestamp when the PIN expires (default: 24 hours) |
+| `expires_at_timestamp` | ISO timestamp when the PIN expires (default: 31 days / 744 hours) |

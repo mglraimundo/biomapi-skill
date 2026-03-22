@@ -1,6 +1,6 @@
 {
-  "name": "biomapi-skill",
-  "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images) via biomapi.com",
+  "name": "biomapi-cli",
+  "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images/JSON) via biomapi.com",
   "version": "1.0.0",
   "author": {
     "name": "mglraimundo"

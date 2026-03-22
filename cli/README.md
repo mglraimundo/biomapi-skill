@@ -2,7 +2,7 @@
 
 Standalone Python client for [BiomAPI](https://biomapi.com) — zero dependencies, pure stdlib, runs anywhere Python 3.11+ is installed.
 
-Processes optical biometry reports (PDF/images) via the BiomAPI cloud service and saves structured results as JSON files. No AI assistant required.
+Processes optical biometry reports (PDF/images/JSON) via the BiomAPI cloud service and saves structured results as JSON files. No AI assistant required.
 
 ## Requirements
 
@@ -31,13 +31,33 @@ Set environment variables before running, or export them in your shell profile:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BIOMAPI_KEY` | No | *(none)* | API key for higher daily rate limits |
+| `BIOMAPI_KEY` | No | *(none)* | BiomAPI key for higher daily rate limits on all endpoints |
+| `GEMINI_API_KEY` | No | *(none)* | Your own Gemini API key (BYOK) — bypasses server-side rate limits on `process` |
 
 ```bash
-export BIOMAPI_KEY=biom_your_key_here   # optional
+export BIOMAPI_KEY=biom_your_key_here    # optional: higher limits on process + retrieve
+export GEMINI_API_KEY=AIza_your_key_here # optional: unlimited process (uses your Gemini quota)
 ```
 
-**Public access** works out of the box with a daily limit of 30 extractions per IP. Set `BIOMAPI_KEY` for higher limits.
+**Access tiers:**
+
+| `BIOMAPI_KEY` | `GEMINI_API_KEY` | `process` limit | `retrieve` limit |
+|---|---|---|---|
+| — | — | 30/day per IP | 1000/day per IP |
+| ✓ | — | Custom quota (per user) | Custom quota (per user) |
+| — | ✓ | Unlimited (your Gemini quota) | 1000/day per IP |
+| ✓ | ✓ | Unlimited (your Gemini quota) | Custom quota (per user) |
+
+### Config file
+
+Create `~/.config/biomapi/config` with simple KEY=VALUE pairs as an alternative to environment variables:
+
+```
+BIOMAPI_KEY=biom_your_key_here
+GEMINI_API_KEY=AIza_your_key_here
+```
+
+Priority: CLI flags > environment variables > config file.
 
 ---
 
@@ -46,12 +66,12 @@ export BIOMAPI_KEY=biom_your_key_here   # optional
 ### `process` — Extract biometry from a file
 
 ```
-biomapi.py process <file> [<file2> ...] [--pin]
+biomapi.py process <file> [<file2> ...] [--no-pin] [--key <key>] [--gemini-key <key>]
 ```
 
-- Accepts PDF, PNG, JPG, JPEG (max 20 MB each)
+- Accepts PDF, PNG, JPG, JPEG, JSON (max 20 MB each)
 - Multiple files are processed concurrently
-- `--pin` generates a shareable BiomPIN for each file
+- BiomPIN is generated **by default** — use `--no-pin` to skip
 
 **Results are always saved as JSON files** next to the source file, named `biomapi-{patient_id}-{device}.json`.
 
@@ -67,45 +87,57 @@ biomapi.py process <file> [<file2> ...] [--pin]
 # Single file
 python biomapi.py process patient_report.pdf
 
-# Multiple files, generate BiomPINs
-python biomapi.py process *.pdf --pin
+# Multiple files, skip BiomPIN
+python biomapi.py process *.pdf --no-pin
 
-# With custom API key
+# With BiomAPI key (higher limits)
 BIOMAPI_KEY=biom_abc123 python biomapi.py process scan.pdf
+
+# Or via CLI flag
+python biomapi.py process scan.pdf --key biom_abc123
+
+# With your own Gemini key (BYOK — unlimited processing, uses your Gemini quota)
+GEMINI_API_KEY=AIza_xxx python biomapi.py process scan.pdf
 ```
 
 **Sample saved JSON structure** (abbreviated):
 
 ```json
 {
+  "success": true,
   "data": {
     "biometer": { "device_name": "IOLMaster 700", "manufacturer": "Zeiss" },
-    "patient": { "patient_id": "12345", "patient_name": "JD", "date_of_birth": "1960-01-15", "gender": "M" },
+    "patient": { "id": "12345", "name": "JD", "date_of_birth": "1960-01-15", "gender": "Male" },
     "right_eye": {
       "AL": 23.45,
       "ACD": 3.12,
       "K1_magnitude": 43.50, "K1_axis": 90,
       "K2_magnitude": 44.25, "K2_axis": 180,
       "WTW": 11.8, "LT": 4.2, "CCT": 545,
-      "lens_status": "phakic",
-      "post_refractive": false,
+      "lens_status": "Phakic",
+      "post_refractive": "None",
       "keratometric_index": 1.3375
     },
     "left_eye": { "..." : "..." }
   },
   "extra_data": {
     "posterior_keratometry": {
-      "device_name": "IOLMaster 700",
+      "pk_device_name": "IOLMaster 700",
       "right_eye": { "PK1_magnitude": 6.15, "PK1_axis": 87, "PK2_magnitude": 6.32, "PK2_axis": 177 },
       "left_eye": { "PK1_magnitude": 6.20, "PK1_axis": 92, "PK2_magnitude": 6.38, "PK2_axis": 182 }
     }
   },
   "metadata": {
     "extraction_method": "BiomAI",
-    "model": "gemini-3-flash-preview",
-    "processing_time_ms": 3821
+    "extraction": {
+      "model": "gemini-flash-latest",
+      "processing_time_ms": 3821
+    }
   },
-  "biompin": "lunar-rocket-731904"
+  "biompin": {
+    "pin": "lunar-rocket-731904",
+    "expires_at": "2026-04-21T12:00:00Z"
+  }
 }
 ```
 
@@ -132,7 +164,7 @@ python biomapi.py retrieve lunar-rocket-731904
 {"patient_id": "12345", "patient_name": "JD", "device": "IOLMaster 700", "biompin": "lunar-rocket-731904", "saved_json": "/abs/path/biomapi-12345-iolmaster700.json"}
 ```
 
-BiomPINs expire after 24 hours by default (configurable per instance).
+BiomPINs expire after 31 days (744 hours) by default (configurable per instance).
 
 ---
 
@@ -142,7 +174,7 @@ BiomPINs expire after 24 hours by default (configurable per instance).
 biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
 ```
 
-Converts one or more saved BiomAPI JSON files into a by-eye CSV. Each report contributes two rows (right eye, left eye).
+Sends one or more saved BiomAPI JSON files to the API for server-side CSV generation. Each report contributes two rows (right eye, left eye). Requires network access.
 
 ```bash
 # Export a single file
@@ -168,9 +200,9 @@ python biomapi.py csv *.json --output ./exports
 | `biometer_device_name` | Device model (e.g. IOLMaster 700) |
 | `biometer_manufacturer` | Manufacturer (e.g. Zeiss) |
 | `patient_name` | Patient name / acronym |
-| `patient_patient_id` | Patient ID |
+| `patient_id` | Patient ID |
 | `patient_date_of_birth` | Date of birth (ISO format) |
-| `patient_gender` | Gender (M/F/Other/Unknown) |
+| `patient_gender` | Gender (`Male`/`Female`/`Other`/`Unknown`) |
 | `AL` | Axial length (mm) |
 | `ACD` | Anterior chamber depth (mm) |
 | `K1_magnitude` | Flattest keratometry (D) |
@@ -180,11 +212,31 @@ python biomapi.py csv *.json --output ./exports
 | `WTW` | White-to-white corneal diameter (mm) |
 | `LT` | Lens thickness (mm) |
 | `CCT` | Central corneal thickness (μm) |
-| `lens_status` | `phakic`, `pseudophakic`, or `aphakic` |
-| `post_refractive` | `True` / `False` (prior refractive surgery) |
+| `lens_status` | `Phakic`, `Pseudophakic`, `Aphakic`, or `Phakic IOL` |
+| `post_refractive` | `None`, `LASIK`, `PRK`, `RK`, or `Other` |
 | `keratometric_index` | Keratometric index used (e.g. 1.3375) |
+| `PK1_magnitude` | Posterior K1 power (D), if available |
+| `PK1_axis` | Posterior K1 axis (°), if available |
+| `PK2_magnitude` | Posterior K2 power (D), if available |
+| `PK2_axis` | Posterior K2 axis (°), if available |
+| `pk_device_name` | Device used for posterior keratometry |
+| `extraction_timestamp` | ISO timestamp of extraction |
+| `biompin` | BiomPIN code (if generated) |
+| `biompin_expires_at` | BiomPIN expiry timestamp (if generated) |
 
-*Note: Posterior keratometry (PK1/PK2) is not included in the CSV export — it is available in the full JSON under `extra_data.posterior_keratometry`.*
+---
+
+### `usage` — Check rate limit usage
+
+```
+biomapi.py usage
+```
+
+Returns current rate limit usage for the authenticated key or public IP:
+
+```bash
+python biomapi.py usage
+```
 
 ---
 
@@ -202,7 +254,7 @@ python biomapi.py status
 
 **Stdout:**
 ```json
-{"status": "ok", "version": "0.9.7", "models": ["gemini-3-flash-preview"]}
+{"status": "ok", "version": "0.9.7", "models": ["gemini-flash-latest"]}
 ```
 
 ---
@@ -216,7 +268,7 @@ python biomapi.py status
 # Process all PDFs in a directory
 for f in /path/to/reports/*.pdf; do
     echo "Processing: $f"
-    python biomapi.py process "$f" --pin
+    python biomapi.py process "$f"
 done
 ```
 
@@ -224,7 +276,7 @@ done
 
 ```bash
 # Process all files and collect compact summaries
-python biomapi.py process /path/to/reports/*.pdf --pin > results.jsonl
+python biomapi.py process /path/to/reports/*.pdf > results.jsonl
 
 # View with pretty-print (one line at a time)
 while IFS= read -r line; do echo "$line" | python -m json.tool; done < results.jsonl
@@ -252,10 +304,10 @@ python biomapi.py process *.pdf || echo "One or more files failed"
 
 ```bash
 # Extract just the BiomPIN from stdout
-python biomapi.py process report.pdf --pin | jq -r '.biompin'
+python biomapi.py process report.pdf | jq -r '.biompin'
 
 # Extract saved JSON path
-python biomapi.py process report.pdf | jq -r '.saved_json'
+python biomapi.py process report.pdf --no-pin | jq -r '.saved_json'
 ```
 
 ---
@@ -275,7 +327,7 @@ Errors are returned as JSON to stdout (not stderr), with `"error": true`:
 | Status | Cause | Fix |
 |--------|-------|-----|
 | 429 | Rate limit exceeded | Wait 24h or use `BIOMAPI_KEY` |
-| 400 | Invalid file format | Ensure file is PDF/PNG/JPG/JPEG |
+| 400 | Invalid file format | Ensure file is PDF/PNG/JPG/JPEG/JSON |
 | 413 | File too large | Maximum 20 MB per file |
 | 503 | API temporarily overloaded | Retry after a short wait |
 | Connection failed | Cannot reach biomapi.com | Check internet access / firewall |
@@ -318,4 +370,4 @@ python biomapi.py process biomapi-12345-iolmaster700-edited.json
 
 ## License
 
-MIT — see [LICENSE](https://github.com/mglraimundo/biomapi-skill/blob/main/LICENSE).
+MIT — see [LICENSE](https://github.com/mglraimundo/biomapi-cli/blob/main/LICENSE).
