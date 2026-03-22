@@ -57,13 +57,25 @@ If a user reports a 429 rate limit error or asks how to get higher limits, help 
 1. **BIOMAPI_KEY** — for higher daily limits: obtained from the BiomAPI operator.
 2. **GEMINI_API_KEY** — for unlimited processing: the user's own Gemini API key from [aistudio.google.com](https://aistudio.google.com).
 
-Keys can be set via environment variable, `--key`/`--gemini-key` CLI flags, or a config file at `~/.config/biomapi/config`:
-```
-BIOMAPI_KEY=biom_your_key_here
-GEMINI_API_KEY=AIza_your_key_here
+Use the `configure` command to save keys to the config file (works on Windows, macOS, Linux):
+
+```bash
+python3 scripts/biomapi.py configure --key biom_your_key_here
+python3 scripts/biomapi.py configure --gemini-key AIza_your_key_here
+python3 scripts/biomapi.py configure --show   # verify what's configured
 ```
 
+Keys can also be set via `--key`/`--gemini-key` CLI flags per-call, or environment variables.
+
 ## Commands
+
+### Configure API keys
+
+```bash
+python3 scripts/biomapi.py configure --key biom_abc123
+python3 scripts/biomapi.py configure --gemini-key AIza_xxx
+python3 scripts/biomapi.py configure --show
+```
 
 ### Process a biometry file
 

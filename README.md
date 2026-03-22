@@ -98,10 +98,21 @@ The ESCRS link is included in every default output. Just process the biometry fi
 
 ## Configuration
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `BIOMAPI_KEY` | No | *(none)* | API key for higher rate limits |
-| `GEMINI_API_KEY` | No | *(none)* | Your own Gemini API key (BYOK — bypasses process rate limits) |
+Run the configure command to save your API keys (works on Windows, macOS, and Linux):
+
+```
+python biomapi.py configure
+```
+
+Or set keys directly without interactive prompts:
+
+```
+python biomapi.py configure --key biom_your_key_here
+python biomapi.py configure --gemini-key AIza_your_key_here
+python biomapi.py configure --show    # view current config
+```
+
+Keys can also be set via CLI flags (`--key`, `--gemini-key`) or environment variables. See [`cli/README.md`](cli/README.md) for the full reference including Windows instructions.
 
 **Access tiers:**
 
@@ -111,8 +122,6 @@ The ESCRS link is included in every default output. Just process the biometry fi
 | ✓ | — | Custom quota (per user) | Custom quota (per user) |
 | — | ✓ | Unlimited (your Gemini quota) | 1000/day per IP |
 | ✓ | ✓ | Unlimited (your Gemini quota) | Custom quota (per user) |
-
-Keys can also be set via CLI flags (`--key`, `--gemini-key`) or a config file at `~/.config/biomapi/config`.
 
 ## How it works
 

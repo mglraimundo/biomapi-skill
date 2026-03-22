@@ -12,34 +12,51 @@ Processes optical biometry reports (PDF/images/JSON) via the BiomAPI cloud servi
 
 ## Installation
 
-Download `biomapi.py` and place it wherever you like:
+Download `biomapi.py` and place it wherever you like. Run it via Python on any OS:
+
+```
+python biomapi.py status
+```
+
+On macOS/Linux you can also make it executable and invoke it directly:
 
 ```bash
-# Make executable (macOS / Linux)
 chmod +x biomapi.py
-
-# Run directly
 ./biomapi.py status
-
-# Or always via python
-python biomapi.py status
 ```
 
 ## Configuration
 
-Set environment variables before running, or export them in your shell profile:
+### Quick setup (recommended, all platforms)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `BIOMAPI_KEY` | No | *(none)* | BiomAPI key for higher daily rate limits on all endpoints |
-| `GEMINI_API_KEY` | No | *(none)* | Your own Gemini API key (BYOK) — bypasses server-side rate limits on `process` |
+Run the configure command to save your API keys to a config file:
 
-```bash
-export BIOMAPI_KEY=biom_your_key_here    # optional: higher limits on process + retrieve
-export GEMINI_API_KEY=AIza_your_key_here # optional: unlimited process (uses your Gemini quota)
+```
+python biomapi.py configure
 ```
 
-**Access tiers:**
+This prompts interactively. To set keys non-interactively (useful in scripts):
+
+```
+python biomapi.py configure --key biom_your_key_here
+python biomapi.py configure --gemini-key AIza_your_key_here
+```
+
+View your current configuration:
+
+```
+python biomapi.py configure --show
+```
+
+Remove keys:
+
+```
+python biomapi.py configure --clear-key         # remove BIOMAPI_KEY
+python biomapi.py configure --clear-gemini-key  # remove GEMINI_API_KEY
+python biomapi.py configure --clear             # remove config file entirely
+```
+
+### Access tiers
 
 | `BIOMAPI_KEY` | `GEMINI_API_KEY` | `process` limit | `retrieve` limit |
 |---|---|---|---|
@@ -48,20 +65,59 @@ export GEMINI_API_KEY=AIza_your_key_here # optional: unlimited process (uses you
 | — | ✓ | Unlimited (your Gemini quota) | 1000/day per IP |
 | ✓ | ✓ | Unlimited (your Gemini quota) | Custom quota (per user) |
 
-### Config file
+### Alternative: environment variables
 
-Create `~/.config/biomapi/config` with simple KEY=VALUE pairs as an alternative to environment variables:
+Keys can also be set via environment variables (or passed per-call with `--key`/`--gemini-key` flags).
 
+**Linux / macOS** (bash/zsh — add to `~/.bashrc` or `~/.zshrc` to persist):
+```bash
+export BIOMAPI_KEY=biom_your_key_here
+export GEMINI_API_KEY=AIza_your_key_here
 ```
-BIOMAPI_KEY=biom_your_key_here
-GEMINI_API_KEY=AIza_your_key_here
+
+**Windows PowerShell** (add to `$PROFILE` to persist):
+```powershell
+$env:BIOMAPI_KEY = "biom_your_key_here"
+$env:GEMINI_API_KEY = "AIza_your_key_here"
 ```
+
+**Windows CMD** (use `setx` for persistence across sessions):
+```cmd
+setx BIOMAPI_KEY biom_your_key_here
+setx GEMINI_API_KEY AIza_your_key_here
+```
+
+### Config file location
+
+The `configure` command saves keys to a plain-text file:
+
+- **Linux / macOS**: `~/.config/biomapi/config`
+- **Windows**: `C:\Users\<username>\.config\biomapi\config`
 
 Priority: CLI flags > environment variables > config file.
 
 ---
 
 ## Commands
+
+### `configure` — Set up API keys
+
+```
+biomapi.py configure [--key <key>] [--gemini-key <key>] [--url <url>] [--show] [--clear] [--clear-key] [--clear-gemini-key]
+```
+
+Saves API keys to `~/.config/biomapi/config`. Works identically on Windows, macOS, and Linux.
+
+```bash
+python biomapi.py configure                           # interactive
+python biomapi.py configure --key biom_abc123         # set BIOMAPI_KEY
+python biomapi.py configure --gemini-key AIza_xxx     # set GEMINI_API_KEY
+python biomapi.py configure --show                    # view current config
+python biomapi.py configure --clear                   # remove config file
+python biomapi.py configure --clear-key               # remove only BIOMAPI_KEY
+```
+
+---
 
 ### `process` — Extract biometry from a file
 
@@ -261,53 +317,47 @@ python biomapi.py status
 
 ## Scripting Examples
 
-### Batch process a folder
+### Linux / macOS (bash)
 
 ```bash
-#!/bin/bash
 # Process all PDFs in a directory
 for f in /path/to/reports/*.pdf; do
-    echo "Processing: $f"
     python biomapi.py process "$f"
 done
-```
 
-### Batch process and collect results
-
-```bash
-# Process all files and collect compact summaries
+# Batch process and collect summaries
 python biomapi.py process /path/to/reports/*.pdf > results.jsonl
 
-# View with pretty-print (one line at a time)
-while IFS= read -r line; do echo "$line" | python -m json.tool; done < results.jsonl
-```
-
-### Process and immediately export to CSV
-
-```bash
-#!/bin/bash
+# Process then export to CSV
 DIR=/path/to/reports
 python biomapi.py process "$DIR"/*.pdf
-
-# Collect all generated JSON files and export
 python biomapi.py csv "$DIR"/biomapi-*.json --output "$DIR/exports"
-```
 
-### Check for errors in batch run
-
-```bash
 # Exit code 1 if any file fails
 python biomapi.py process *.pdf || echo "One or more files failed"
+
+# Extract BiomPIN with jq (if installed)
+python biomapi.py process report.pdf | jq -r '.biompin'
 ```
 
-### Use with jq (if installed)
+### Windows (PowerShell)
 
-```bash
-# Extract just the BiomPIN from stdout
-python biomapi.py process report.pdf | jq -r '.biompin'
+```powershell
+# Process all PDFs in a directory
+Get-ChildItem -Path C:\reports -Filter *.pdf | ForEach-Object {
+    python biomapi.py process $_.FullName
+}
 
-# Extract saved JSON path
-python biomapi.py process report.pdf --no-pin | jq -r '.saved_json'
+# Batch process and collect summaries
+python biomapi.py process C:\reports\*.pdf > results.jsonl
+
+# Process then export to CSV
+python biomapi.py process C:\reports\*.pdf
+python biomapi.py csv C:\reports\biomapi-*.json --output C:\reports\exports
+
+# Check for errors
+python biomapi.py process *.pdf
+if ($LASTEXITCODE -ne 0) { Write-Host "One or more files failed" }
 ```
 
 ---

@@ -7,6 +7,7 @@ results via BiomPIN secure sharing codes. Also works as a Claude Code plugin
 and Codex skill.
 
 Usage:
+    biomapi.py configure [--key <key>] [--gemini-key <key>] [--show] [--clear]
     biomapi.py process <file_path> [<file_path2> ...] [--no-pin] [--key <key>] [--gemini-key <key>]
     biomapi.py retrieve <biompin_code>
     biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
@@ -29,8 +30,9 @@ Environment:
     GEMINI_API_KEY   - Optional: your own Gemini key (BYOK, bypasses process rate limits)
 
 Config file (~/.config/biomapi/config):
-    Simple KEY=VALUE format. Keys: BIOMAPI_KEY, GEMINI_API_KEY
+    Simple KEY=VALUE format. Keys: BIOMAPI_KEY, GEMINI_API_KEY, BIOMAPI_URL
     Priority: CLI flags > environment variables > config file
+    Run `biomapi.py configure` to set up the config file interactively.
 """
 
 import json
@@ -44,15 +46,16 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-BASE_URL = os.environ.get("BIOMAPI_URL", "https://biomapi.com")
+def _config_path() -> str:
+    """Return path to ~/.config/biomapi/config (cross-platform)."""
+    return os.path.join(os.path.expanduser("~"), ".config", "biomapi", "config")
 
 
 def _load_config() -> dict:
     """Read ~/.config/biomapi/config if it exists. Simple KEY=VALUE format."""
-    config_path = os.path.join(os.path.expanduser("~"), ".config", "biomapi", "config")
     config = {}
     try:
-        with open(config_path) as f:
+        with open(_config_path()) as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
@@ -63,9 +66,27 @@ def _load_config() -> dict:
     return config
 
 
+def _save_config(config: dict) -> str:
+    """Write config dict to ~/.config/biomapi/config. Creates dirs if needed. Returns path."""
+    path = _config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for k, v in config.items():
+            f.write(f"{k}={v}\n")
+    return path
+
+
+def _mask_key(value: str) -> str:
+    """Mask a secret value for display: show first 10 chars + '...'."""
+    if len(value) <= 10:
+        return value
+    return value[:10] + "..."
+
+
 _config = _load_config()
 API_KEY = os.environ.get("BIOMAPI_KEY") or _config.get("BIOMAPI_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or _config.get("GEMINI_API_KEY", "")
+BASE_URL = os.environ.get("BIOMAPI_URL") or _config.get("BIOMAPI_URL", "https://biomapi.com")
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".json"}
 
@@ -234,6 +255,123 @@ def _process_one(file_path: str, generate_pin: bool) -> dict:
     }
 
 
+def cmd_configure(args: list[str]) -> None:
+    """Set up API keys in the config file. Works on Windows, macOS, and Linux."""
+    show = "--show" in args
+    clear = "--clear" in args
+    clear_key = "--clear-key" in args
+    clear_gemini_key = "--clear-gemini-key" in args
+
+    key_value = None
+    gemini_key_value = None
+    url_value = None
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--key" and i + 1 < len(args):
+            key_value = args[i + 1]
+            i += 2
+        elif args[i] == "--gemini-key" and i + 1 < len(args):
+            gemini_key_value = args[i + 1]
+            i += 2
+        elif args[i] == "--url" and i + 1 < len(args):
+            url_value = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    path = _config_path()
+
+    if show:
+        cfg = _load_config()
+        print(f"Config file: {path}", file=sys.stderr)
+        print(f"File exists: {'yes' if os.path.isfile(path) else 'no'}", file=sys.stderr)
+        print(file=sys.stderr)
+        for name, default in [("BIOMAPI_KEY", None), ("GEMINI_API_KEY", None), ("BIOMAPI_URL", "https://biomapi.com")]:
+            env_val = os.environ.get(name)
+            cfg_val = cfg.get(name)
+            if env_val:
+                print(f"  {name} = {_mask_key(env_val)} (from environment)", file=sys.stderr)
+            elif cfg_val:
+                print(f"  {name} = {_mask_key(cfg_val)} (from config file)", file=sys.stderr)
+            elif default:
+                print(f"  {name} = {default} (default)", file=sys.stderr)
+            else:
+                print(f"  {name} = (not set)", file=sys.stderr)
+        return
+
+    if clear:
+        try:
+            os.remove(path)
+            print(f"Removed {path}", file=sys.stderr)
+        except FileNotFoundError:
+            print(f"No config file to remove ({path})", file=sys.stderr)
+        return
+
+    if clear_key or clear_gemini_key:
+        cfg = _load_config()
+        removed = []
+        if clear_key and "BIOMAPI_KEY" in cfg:
+            del cfg["BIOMAPI_KEY"]
+            removed.append("BIOMAPI_KEY")
+        if clear_gemini_key and "GEMINI_API_KEY" in cfg:
+            del cfg["GEMINI_API_KEY"]
+            removed.append("GEMINI_API_KEY")
+        if removed:
+            if cfg:
+                _save_config(cfg)
+            else:
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+            print(f"Removed: {', '.join(removed)}", file=sys.stderr)
+        else:
+            print("Nothing to remove.", file=sys.stderr)
+        return
+
+    # Flag-based (non-interactive): at least one value flag provided
+    if key_value is not None or gemini_key_value is not None or url_value is not None:
+        cfg = _load_config()
+        if key_value is not None:
+            cfg["BIOMAPI_KEY"] = key_value
+        if gemini_key_value is not None:
+            cfg["GEMINI_API_KEY"] = gemini_key_value
+        if url_value is not None:
+            cfg["BIOMAPI_URL"] = url_value
+        saved = _save_config(cfg)
+        print(f"Saved to {saved}", file=sys.stderr)
+        return
+
+    # Interactive mode
+    print("BiomAPI CLI Configuration", file=sys.stderr)
+    print(f"Config file: {path}", file=sys.stderr)
+    print(file=sys.stderr)
+
+    cfg = _load_config()
+
+    for name, label in [("BIOMAPI_KEY", "BIOMAPI_KEY"), ("GEMINI_API_KEY", "GEMINI_API_KEY")]:
+        current = cfg.get(name, "")
+        if current:
+            prompt = f"  {label} [{_mask_key(current)}]: "
+        else:
+            prompt = f"  {label}: "
+        try:
+            val = input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.", file=sys.stderr)
+            return
+        if val:
+            cfg[name] = val
+
+    if not cfg.get("BIOMAPI_KEY") and not cfg.get("GEMINI_API_KEY"):
+        print("\nNo keys configured. Skipping save.", file=sys.stderr)
+        return
+
+    saved = _save_config(cfg)
+    print(f"\nSaved to {saved}", file=sys.stderr)
+
+
 def cmd_process(file_paths: list[str], generate_pin: bool = True) -> None:
     """Upload one or more biometry files for AI extraction, concurrently."""
     if len(file_paths) == 1:
@@ -328,6 +466,7 @@ _HELP = """\
 BiomAPI CLI — zero-dependency Python client for BiomAPI biometry extraction.
 
 Usage:
+  biomapi.py configure                     [--key <key>] [--gemini-key <key>] [--show] [--clear]
   biomapi.py process <file> [<file2> ...]  [--no-pin] [--key <key>] [--gemini-key <key>]
   biomapi.py retrieve <biompin_code>       [--key <key>]
   biomapi.py csv <file.json> [<file2.json> ...] [--output <dir>]
@@ -336,6 +475,16 @@ Usage:
   biomapi.py --help
 
 Commands:
+  configure    Save API keys to the config file (works on Windows, macOS, Linux).
+               Run with no flags for interactive setup, or use flags directly:
+                 --key <key>         Set BIOMAPI_KEY
+                 --gemini-key <key>  Set GEMINI_API_KEY
+                 --url <url>         Set BIOMAPI_URL (for self-hosted instances)
+                 --show              Display current configuration
+                 --clear             Remove the config file
+                 --clear-key         Remove only BIOMAPI_KEY from config
+                 --clear-gemini-key  Remove only GEMINI_API_KEY from config
+
   process      Extract biometry from PDF/PNG/JPG/JPEG/JSON (max 20MB each).
                Saves full JSON response next to each source file.
                BiomPIN is generated by default; use --no-pin to skip.
@@ -363,6 +512,7 @@ Environment variables:
 
 Config file (~/.config/biomapi/config):
   Simple KEY=VALUE pairs. Same keys as environment variables.
+  Run `python biomapi.py configure` to create/update it automatically.
   Priority: CLI flags > env vars > config file
 
 Access tiers:
@@ -371,9 +521,11 @@ Access tiers:
   GEMINI_API_KEY     Unlimited process (uses your Gemini quota)
 
 Examples:
+  python biomapi.py configure                     # interactive setup
+  python biomapi.py configure --key biom_abc123   # set key directly
+  python biomapi.py configure --show              # view current config
   python biomapi.py process report.pdf
   python biomapi.py process *.pdf --no-pin
-  python biomapi.py process report.pdf --key biom_abc123
   python biomapi.py retrieve lunar-rocket-731904
   python biomapi.py csv biomapi-*.json --output ./exports
   python biomapi.py usage
@@ -388,6 +540,11 @@ def main() -> None:
     if not args or args[0] in ("-h", "--help", "help"):
         print(_HELP)
         sys.exit(0)
+
+    # Handle configure before global flag extraction (--key/--gemini-key mean "save" here, not "use")
+    if args[0] == "configure":
+        cmd_configure(args[1:])
+        return
 
     # Extract global flags: --key and --gemini-key (override module-level vars)
     global API_KEY, GEMINI_API_KEY
@@ -406,7 +563,7 @@ def main() -> None:
     args = filtered
 
     if not args:
-        print("Usage: biomapi.py <process|retrieve|csv|usage|status> [args]", file=sys.stderr)
+        print("Usage: biomapi.py <configure|process|retrieve|csv|usage|status> [args]", file=sys.stderr)
         sys.exit(1)
 
     command = args[0]
@@ -453,7 +610,7 @@ def main() -> None:
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print("Commands: process, retrieve, csv, usage, status", file=sys.stderr)
+        print("Commands: configure, process, retrieve, csv, usage, status", file=sys.stderr)
         sys.exit(1)
 
 
