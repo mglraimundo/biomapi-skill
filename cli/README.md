@@ -412,7 +412,7 @@ BiomAPI supports a round-trip workflow:
 3. Re-upload the edited JSON via `process` — BiomJSON engine validates it and preserves original metadata
 
 ```bash
-# Re-upload an edited JSON (treated as manual/BiomHAND extraction)
+# Re-upload an edited JSON (treated as direct/BiomDIRECT extraction)
 python biomapi.py process biomapi-12345-iolmaster700-edited.json
 ```
 

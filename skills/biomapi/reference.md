@@ -103,7 +103,7 @@ Posterior keratometry is measured per eye, same structure as anterior K values b
 
 | Field | Description |
 |-------|-------------|
-| `extraction_method` | `BiomAI` (LLM extraction) or `BiomHAND` (manual/edited) |
+| `extraction_method` | `BiomAI` (LLM extraction) or `BiomDIRECT` (direct/edited) |
 | `extraction_timestamp` | ISO timestamp of when extraction occurred |
 | `filename` | Original filename processed |
 | `llm` | Model used for extraction (BiomAI only) |
