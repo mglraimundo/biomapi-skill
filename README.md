@@ -1,6 +1,6 @@
 # BiomAPI CLI
 
-AI-powered biometry data extraction from optical biometry reports (PDF/images/JSON) via [biomapi.com](https://biomapi.com).
+Biometry data extraction from optical biometry reports (PDF/images/JSON) via [biomapi.com](https://biomapi.com).
 
 Upload a biometry PDF or image and get structured measurements (AL, K1, K2, ACD, CCT, and more) returned as a clinical biometry table.
 

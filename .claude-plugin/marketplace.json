@@ -10,7 +10,7 @@
         "source": "github",
         "repo": "mglraimundo/biomapi-cli"
       },
-      "description": "AI-powered biometry data extraction from optical biometry reports (PDF/images/JSON) via biomapi.com"
+      "description": "Biometry data extraction from optical biometry reports (PDF/images/JSON) via biomapi.com"
     }
   ]
 }
