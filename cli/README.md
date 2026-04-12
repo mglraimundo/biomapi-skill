@@ -186,7 +186,7 @@ GEMINI_API_KEY=AIza_xxx python biomapi.py process scan.pdf
   "metadata": {
     "extraction_method": "BiomAI",
     "extraction": {
-      "model": "gemini-flash-latest",
+      "model": "gemini-3-flash-preview",
       "processing_time_ms": 3821
     }
   },
@@ -310,7 +310,7 @@ python biomapi.py status
 
 **Stdout:**
 ```json
-{"status": "ok", "version": "0.9.7", "models": ["gemini-flash-latest"]}
+{"status": "ok", "version": "0.9.7", "models": ["gemini-3-flash-preview"]}
 ```
 
 ---
